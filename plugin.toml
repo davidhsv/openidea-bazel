@@ -3,7 +3,6 @@ name = "Bazel"
 version = "0.1.0"
 description = "Bazel for OpenIDEA: syncs Java projects from their BUILD files with the Bazel IntelliJ plugin's aspect, so the Java language server resolves code from Bazel instead of Maven. Starlark and .bazelproject editing."
 authors = ["David Vieira <davidhsv@gmail.com>"]
-homepage = "https://github.com/bazelbuild/intellij"
 license = "Apache-2.0"
 change-notes = "0.1.0 — first release: Sync Project with BUILD Files (aspect sync of Java targets into an Eclipse project for jdtls), Starlark and project view languages."
 categories = ["frameworks", "languages", "tools"]
@@ -37,11 +36,14 @@ title = "Bazel: Open Project View File"
 category = "Bazel"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
 
-[[contributes.commands]]
-id = "reopen"
-title = "Bazel: Reopen Project"
-category = "Bazel"
-when = "workspaceContains:.openidea/bazel/last-sync.txt"
+[[contributes.languages]]
+path = "languages/starlark.toml"
+
+[[contributes.languages]]
+path = "languages/bazelproject.toml"
+
+[[contributes.languages]]
+path = "languages/bazelrc.toml"
 
 [[contributes.menus]]
 menu = "tools"

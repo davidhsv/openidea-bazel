@@ -73,10 +73,6 @@ impl Plugin for BazelPlugin {
                 }
                 open(&project, sync::PROJECT_VIEW)
             }
-            "reopen" => {
-                host::open_project(&project.root()?, false)?;
-                Ok(None)
-            }
             _ => Err(Error::NotFound(format!("command {id}"))),
         }
     }
@@ -160,16 +156,18 @@ fn notify_done(s: &SyncSummary) {
     if !s.warnings.is_empty() {
         body.push_str(&format!(" {} warnings.", s.warnings.len()));
     }
-    let mut actions = vec![NotificationAction::new("Show Log", "open-sync-log")];
+    let actions = [NotificationAction::new("Show Log", "open-sync-log")];
     let level = if s.warnings.is_empty() {
         NotificationLevel::Info
     } else {
         NotificationLevel::Warning
     };
-    if s.project_changed || s.settings_changed {
-        // jdtls only reads Eclipse metadata and its settings when it starts.
-        body.push_str(" Reopen the project so the Java language server loads it.");
-        actions.insert(0, NotificationAction::new("Reopen Project", "reopen"));
+    // jdtls reads the Eclipse project when it starts, and the IDE reads `.openidea/settings.toml`
+    // when the project opens; plugins can trigger neither.
+    if s.settings_changed {
+        body.push_str(" Restart OpenIDEA (Find Action › Restart IDE) so the Java language server loads the Bazel project.");
+    } else if s.project_changed {
+        body.push_str(" Restart the Java language server (language servers in the status bar › jdtls › Restart) to load the new classpath.");
     }
     let _ = host::notify_with_actions(level, "Bazel sync finished", &body, &actions);
 }
@@ -215,3 +213,175 @@ fn first_lines(text: &str, n: usize) -> String {
 const DEFAULT_PROJECT_VIEW: &str = "directories:\n  .\n\nderive_targets_from_directories: true\n";
 
 register_plugin!(BazelPlugin);
+
+#[cfg(test)]
+mod tests {
+    use openidea_plugin::mock::MockHost;
+    use openidea_plugin::{Context, Event, FilesChanged};
+
+    use super::*;
+
+    const ALL: &[&str] = &[
+        "project.read",
+        "project.write",
+        "process:bazelisk",
+        "fs.read:/private/var/tmp",
+        "events",
+    ];
+
+    fn activated(caps: &[&str]) -> BazelPlugin {
+        let mut plugin = BazelPlugin::default();
+        let ctx = Context {
+            plugin_id: "davidhsv.bazel".into(),
+            plugin_version: "0.1.0".into(),
+            api_version: "1.3".into(),
+            capabilities: caps.iter().map(|c| c.to_string()).collect(),
+        };
+        plugin.activate(&ctx).unwrap();
+        plugin
+    }
+
+    fn read(host: &MockHost, path: &str) -> Option<String> {
+        host.invocation()
+            .project()
+            .and_then(|p| p.read_file(path).ok())
+    }
+
+    #[test]
+    fn sync_needs_a_bazel_grant() {
+        let host = MockHost::install().with_capabilities(&["project.read", "project.write"]);
+        host.add_file(".bazelproject", "directories:\n  .\n");
+        let mut plugin = activated(&["project.read", "project.write"]);
+        assert_eq!(
+            plugin.run_command("sync", &host.invocation(), None),
+            Err(Error::Denied("process:bazelisk".into()))
+        );
+        assert!(host.tasks().is_empty(), "nothing started");
+    }
+
+    #[test]
+    fn a_failed_sync_runs_in_a_task_and_points_at_its_log() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file(
+            ".bazelproject",
+            "directories:\n  .\n\nderive_targets_from_directories: true\n",
+        );
+        let mut plugin = activated(ALL);
+        // The mock's processes print no `bazel info` values, so the sync stops after it.
+        assert_eq!(
+            plugin.run_command("sync", &host.invocation(), None),
+            Ok(None)
+        );
+
+        let tasks = host.tasks();
+        assert_eq!(tasks[0].title, "Bazel: Sync Project with BUILD Files");
+        assert!(
+            tasks[0]
+                .reports
+                .iter()
+                .any(|(_, _, m)| m.as_deref() == Some("bazel info"))
+        );
+        let failed = host
+            .notifications_with_actions()
+            .into_iter()
+            .find(|n| n.notification.title == "Bazel sync failed")
+            .expect("failure notification");
+        assert!(
+            failed
+                .notification
+                .body
+                .contains("bazel info printed no execution_root"),
+            "{}",
+            failed.notification.body
+        );
+        assert_eq!(failed.actions[0].command, "open-sync-log");
+        assert_eq!(host.status_items()[STATUS].text, "Bazel: sync failed");
+        assert!(read(&host, SYNC_LOG).unwrap().contains("Sync failed"));
+        assert!(
+            host.logs()
+                .iter()
+                .any(|(level, _)| *level == LogLevel::Error)
+        );
+    }
+
+    #[test]
+    fn activation_prefers_bazelisk_watches_build_files_and_suggests_a_first_sync() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file("MODULE.bazel", "module(name = \"demo\")\n");
+        let plugin = activated(&[
+            "project.read",
+            "project.write",
+            "process:bazel",
+            "process:bazelisk",
+            "events",
+        ]);
+        assert_eq!(plugin.bazel.as_deref(), Some("bazelisk"));
+        assert_eq!(host.path_subscriptions()["files-changed"], BUILD_GLOBS);
+        let hint = host.notifications_with_actions();
+        assert!(
+            hint.iter().any(
+                |n| n.notification.title == "Bazel workspace" && n.actions[0].command == "sync"
+            )
+        );
+
+        let plugin = activated(&["project.read", "project.write", "process:bazel"]);
+        assert_eq!(plugin.bazel.as_deref(), Some("bazel"));
+    }
+
+    #[test]
+    fn a_synced_workspace_gets_no_startup_hint() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file("MODULE.bazel", "");
+        host.add_file(".classpath", "<classpath/>");
+        activated(ALL);
+        assert!(host.notifications_with_actions().is_empty());
+    }
+
+    #[test]
+    fn build_file_edits_mark_the_project_out_of_sync_but_its_own_files_do_not() {
+        let host = MockHost::install().with_capabilities(ALL);
+        let mut plugin = activated(ALL);
+        let changed = |path: &str| {
+            [Event::FilesChanged(FilesChanged {
+                created: vec![],
+                modified: vec![path.into()],
+                removed: vec![],
+            })]
+        };
+        plugin.handle_events(
+            &changed("/project/.openidea/bazel/aspects/java_info.bzl"),
+            &host.invocation(),
+        );
+        assert!(!host.status_items().contains_key(STATUS));
+        plugin.handle_events(&changed("/project/app/BUILD.bazel"), &host.invocation());
+        assert_eq!(
+            host.status_items()[STATUS].text,
+            "Bazel: BUILD files changed"
+        );
+        assert_eq!(host.status_items()[STATUS].command.as_deref(), Some("sync"));
+    }
+
+    #[test]
+    fn open_project_view_creates_a_default_one() {
+        let host = MockHost::install().with_capabilities(ALL);
+        let mut plugin = activated(ALL);
+        plugin
+            .run_command("open-project-view", &host.invocation(), None)
+            .unwrap();
+        assert_eq!(
+            read(&host, sync::PROJECT_VIEW).as_deref(),
+            Some(DEFAULT_PROJECT_VIEW)
+        );
+        assert_eq!(host.opened_locations()[0].0, "/project/.bazelproject");
+    }
+
+    #[test]
+    fn the_sync_log_needs_a_sync() {
+        let host = MockHost::install().with_capabilities(ALL);
+        let mut plugin = activated(ALL);
+        assert!(matches!(
+            plugin.run_command("open-sync-log", &host.invocation(), None),
+            Err(Error::NotFound(m)) if m.contains("sync the project first")
+        ));
+    }
+}

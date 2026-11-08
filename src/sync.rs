@@ -302,7 +302,15 @@ fn read_target_map(
             }
             continue;
         };
-        let target = ideinfo::parse_target_ide_info(&text).map_err(|e| format!("{path}: {e}"))?;
+        // A file Bazel (or IntelliJ, which shares the output base) is rewriting reads truncated:
+        // skip the target rather than the sync.
+        let target = match ideinfo::parse_target_ide_info(&text) {
+            Ok(target) => target,
+            Err(e) => {
+                log.push(format!("warning: skipped {path}: {e}"));
+                continue;
+            }
+        };
         if depth < INFO_DEPTH {
             for dep in &target.deps {
                 if seen.insert(key_fingerprint(&dep.key)) {
@@ -332,9 +340,14 @@ fn write_eclipse(
         log.push(format!("eclipse: {w}"));
         warnings.push(w.clone());
     }
-    let mut changed = false;
-    changed |= write_if_changed(host, ".project", &files.project)?;
-    changed |= write_if_changed(host, ".classpath", &files.classpath)?;
+    // jdtls adds its own resource filter to `.project` after importing it; that alone is no change.
+    let existing = host.read_workspace(".project")?;
+    if existing.as_deref().map(strip_jdtls_filters) != Some(files.project.clone()) {
+        host.write_workspace(".project", &files.project)
+            .map_err(|e| format!("writing .project: {e}"))?;
+    }
+    // What jdtls must reload: the classpath and the compiler settings (the filters only hide folders).
+    let mut changed = write_if_changed(host, ".classpath", &files.classpath)?;
     changed |= write_if_changed(
         host,
         ".settings/org.eclipse.jdt.core.prefs",
@@ -361,6 +374,26 @@ fn write_settings(host: &mut dyn SyncHost, jdtls_data_dir: &str) -> Result<bool,
         }
     }
     Ok(changed)
+}
+
+/// `.project` without the `<filter>` jdtls adds (its arguments end in
+/// `__CREATED_BY_JAVA_LANGUAGE_SERVER__`), and without `<filteredResources>` if that leaves it empty.
+fn strip_jdtls_filters(project: &str) -> String {
+    const MARK: &str = "__CREATED_BY_JAVA_LANGUAGE_SERVER__";
+    let mut out = project.to_string();
+    while let Some(mark) = out.find(MARK) {
+        let (Some(start), Some(end)) =
+            (out[..mark].rfind("<filter>"), out[mark..].find("</filter>"))
+        else {
+            break;
+        };
+        let end = mark + end + "</filter>".len();
+        // The filter's own line, indentation and line break included.
+        let start = out[..start].rfind('\n').map_or(start, |i| i + 1);
+        let end = out[end..].find('\n').map_or(end, |i| end + i + 1);
+        out.replace_range(start..end, "");
+    }
+    out
 }
 
 fn write_if_changed(host: &mut dyn SyncHost, path: &str, text: &str) -> Result<bool, SyncError> {
@@ -445,5 +478,342 @@ impl SyncFiles for HostFiles<'_> {
     fn exists(&mut self, abs_path: &str) -> bool {
         self.tick();
         self.host.exists(abs_path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+
+    const EXEC_ROOT: &str = "/ob/execroot/_main";
+    const BIN: &str = "/ob/execroot/_main/bazel-out/k8-fastbuild/bin";
+
+    /// A workspace in memory and a Bazel that answers from canned output.
+    struct Fake {
+        workspace: BTreeMap<String, String>,
+        outside: BTreeMap<String, Vec<u8>>,
+        runs: Vec<Vec<String>>,
+        query_output: String,
+        info_exit: i32,
+        build_exit: i32,
+        cancelled: bool,
+    }
+
+    fn key(label: &str) -> TargetKey {
+        TargetKey {
+            label: label.into(),
+            aspect_ids: vec![],
+        }
+    }
+
+    const LIB_INFO: &str = r#"key {
+  label: "//app:lib"
+}
+kind_string: "java_library"
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:guava"
+  }
+}
+java_ide_info {
+  jars {
+    interface_jar {
+      relative_path: "app/liblib-ijar.jar"
+      root_execution_path_fragment: "bazel-out/k8-fastbuild/bin"
+    }
+    jar {
+      relative_path: "app/liblib.jar"
+      root_execution_path_fragment: "bazel-out/k8-fastbuild/bin"
+    }
+  }
+  sources {
+    is_source: true
+    relative_path: "app/src/main/java/com/x/A.java"
+    root_execution_path_fragment: ""
+  }
+}
+"#;
+
+    const GUAVA_INFO: &str = r#"key {
+  label: "@@maven//:guava"
+}
+kind_string: "jvm_import"
+java_ide_info {
+  jars {
+    interface_jar {
+      is_external: true
+      relative_path: "external/maven/guava/header_guava.jar"
+      root_execution_path_fragment: "bazel-out/k8-fastbuild/bin"
+    }
+    jar {
+      is_external: true
+      relative_path: "external/maven/guava/processed_guava.jar"
+      root_execution_path_fragment: "bazel-out/k8-fastbuild/bin"
+    }
+    source_jars {
+      is_external: true
+      relative_path: "external/maven/guava/guava-sources.jar"
+      root_execution_path_fragment: "bazel-out/k8-fastbuild/bin"
+    }
+  }
+}
+"#;
+
+    impl Fake {
+        fn new() -> Self {
+            let mut fake = Fake {
+                workspace: BTreeMap::new(),
+                outside: BTreeMap::new(),
+                runs: vec![],
+                query_output: "java_library rule //app:lib\nfilegroup rule //app:files\n".into(),
+                info_exit: 0,
+                build_exit: 0,
+                cancelled: false,
+            };
+            fake.workspace.insert(PROJECT_VIEW.into(), "directories:\n  .\n\nderive_targets_from_directories: true\njava_language_level: 17\n".into());
+            fake.workspace.insert(
+                "app/src/main/java/com/x/A.java".into(),
+                "package com.x;\n\nclass A {}\n".into(),
+            );
+            fake.workspace.insert(
+                ".git/info/exclude".into(),
+                "# git ls-files --others --exclude-from=.git/info/exclude\n".into(),
+            );
+            fake.outside.insert(
+                ideinfo::info_file_path(BIN, &key("//app:lib")),
+                LIB_INFO.into(),
+            );
+            fake.outside.insert(
+                ideinfo::info_file_path(BIN, &key("@@maven//:guava")),
+                GUAVA_INFO.into(),
+            );
+            for jar in [
+                "processed_guava.jar",
+                "header_guava.jar",
+                "guava-sources.jar",
+            ] {
+                fake.outside
+                    .insert(format!("{BIN}/external/maven/guava/{jar}"), vec![]);
+            }
+            fake
+        }
+
+        fn ran(&self, command: &str) -> Option<&Vec<String>> {
+            self.runs.iter().find(|r| r[0] == command)
+        }
+    }
+
+    impl SyncHost for Fake {
+        fn workspace_root(&mut self) -> Result<String, String> {
+            Ok("/ws/demo".into())
+        }
+        fn read_workspace(&mut self, path: &str) -> Result<Option<String>, String> {
+            Ok(self.workspace.get(path).cloned())
+        }
+        fn write_workspace(&mut self, path: &str, text: &str) -> Result<(), String> {
+            self.workspace.insert(path.into(), text.into());
+            Ok(())
+        }
+        fn is_workspace_dir(&mut self, path: &str) -> bool {
+            self.workspace
+                .keys()
+                .any(|k| k.starts_with(&format!("{path}/")))
+        }
+        fn read_text(&mut self, path: &str) -> Result<Option<String>, String> {
+            Ok(self
+                .outside
+                .get(path)
+                .map(|b| String::from_utf8_lossy(b).into_owned()))
+        }
+        fn read_bytes(&mut self, path: &str) -> Result<Option<Vec<u8>>, String> {
+            Ok(self.outside.get(path).cloned())
+        }
+        fn exists(&mut self, path: &str) -> bool {
+            self.outside.contains_key(path)
+        }
+        fn private_dir(&mut self) -> Result<String, String> {
+            Ok("/private".into())
+        }
+        fn write_private(&mut self, path: &str, text: &str) -> Result<(), String> {
+            self.outside.insert(path.into(), text.as_bytes().to_vec());
+            Ok(())
+        }
+        fn run_bazel(&mut self, args: &[String], _step: &str) -> Result<BazelRun, SyncError> {
+            if self.cancelled {
+                return Err(SyncError::Cancelled);
+            }
+            self.runs.push(args.to_vec());
+            match args[0].as_str() {
+                "info" => Ok(BazelRun {
+                    exit_code: self.info_exit,
+                    stdout: format!(
+                        "execution_root: {EXEC_ROOT}\noutput_base: /ob\nbazel-bin: {BIN}\nrelease: release 7.7.1\n"
+                    ),
+                    stderr_tail: vec!["ERROR: info failed".into()],
+                }),
+                "query" => {
+                    let out = args
+                        .iter()
+                        .find_map(|a| a.strip_prefix("--output_file="))
+                        .expect("--output_file");
+                    self.outside
+                        .insert(out.into(), self.query_output.as_bytes().to_vec());
+                    Ok(BazelRun::default())
+                }
+                _ => Ok(BazelRun {
+                    exit_code: self.build_exit,
+                    stdout: String::new(),
+                    stderr_tail: vec!["ERROR: build failed".into()],
+                }),
+            }
+        }
+        fn report(&mut self, _message: &str) {}
+        fn cancelled(&mut self) -> bool {
+            self.cancelled
+        }
+    }
+
+    #[test]
+    fn syncs_a_workspace_into_an_eclipse_project_for_jdtls() {
+        let mut fake = Fake::new();
+        let s = sync(&mut fake).unwrap();
+        assert_eq!(
+            (s.targets, s.info_files, s.source_roots, s.libraries),
+            (1, 2, 1, 1)
+        );
+        assert!(s.project_changed && s.settings_changed);
+
+        let build = fake.ran("build").unwrap();
+        assert!(build.contains(&"--aspects=//.openidea/bazel/aspects:intellij_info_bundled.bzl%intellij_info_aspect".to_string()));
+        assert!(build.contains(&"--target_pattern_file=/private/targets.txt".to_string()));
+        assert_eq!(fake.outside["/private/targets.txt"], b"//app:lib\n");
+
+        let classpath = &fake.workspace[".classpath"];
+        assert!(
+            classpath.contains(r#"path="app/src/main/java""#),
+            "{classpath}"
+        );
+        assert!(
+            classpath.contains(&format!("{BIN}/external/maven/guava/processed_guava.jar")),
+            "{classpath}"
+        );
+        assert!(classpath.contains("JavaSE-17"));
+        assert!(fake.workspace.contains_key(".project"));
+        assert!(
+            fake.workspace
+                .contains_key(".settings/org.eclipse.jdt.core.prefs")
+        );
+        assert!(
+            fake.workspace
+                .contains_key(".openidea/bazel/aspects/intellij_info_bundled.bzl")
+        );
+        assert_eq!(fake.workspace[".openidea/bazel/.gitignore"], "*\n");
+
+        let settings = &fake.workspace[".openidea/settings.toml"];
+        assert!(settings.contains("/private/jdtls/"), "{settings}");
+        assert!(fake.workspace[".git/info/exclude"].contains("/.openidea/settings.toml"));
+        assert!(fake.workspace[SYNC_LOG].contains("Synced 1 targets"));
+    }
+
+    #[test]
+    fn a_second_sync_changes_nothing_even_after_jdtls_added_its_filter() {
+        let mut fake = Fake::new();
+        sync(&mut fake).unwrap();
+        let with_jdtls_filter = fake.workspace[".project"].replace(
+            "\t</filteredResources>",
+            "\t\t<filter>\n\t\t\t<id>1794168683519</id>\n\t\t\t<name></name>\n\t\t\t<type>30</type>\n\t\t\t<matcher>\n\t\t\t\t<id>org.eclipse.core.resources.regexFilterMatcher</id>\n\t\t\t\t<arguments>node_modules|\\.git|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>\n\t\t\t</matcher>\n\t\t</filter>\n\t</filteredResources>",
+        );
+        assert_ne!(with_jdtls_filter, fake.workspace[".project"]);
+        fake.workspace
+            .insert(".project".into(), with_jdtls_filter.clone());
+
+        let s = sync(&mut fake).unwrap();
+        assert!(!s.project_changed && !s.settings_changed);
+        assert_eq!(
+            fake.workspace[".project"], with_jdtls_filter,
+            "jdtls' own filter is kept"
+        );
+    }
+
+    #[test]
+    fn strips_only_the_jdtls_filter() {
+        let ours = "<filteredResources>\n\t\t<filter>\n\t\t\t<arguments>bazel-.*</arguments>\n\t\t</filter>\n\t</filteredResources>\n";
+        let theirs = ours.replace(
+            "\t</filteredResources>",
+            "\t\t<filter>\n\t\t\t<arguments>x|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>\n\t\t</filter>\n\t</filteredResources>",
+        );
+        assert_eq!(strip_jdtls_filters(&theirs), ours);
+        assert_eq!(strip_jdtls_filters(ours), ours);
+    }
+
+    #[test]
+    fn a_malformed_info_file_skips_its_target_not_the_sync() {
+        let mut fake = Fake::new();
+        fake.outside.insert(
+            ideinfo::info_file_path(BIN, &key("@@maven//:guava")),
+            b"key { label: \"@@maven//:guava\"".to_vec(),
+        );
+        let s = sync(&mut fake).unwrap();
+        assert_eq!((s.info_files, s.libraries), (1, 0));
+        assert!(
+            fake.workspace[SYNC_LOG].contains("warning: skipped"),
+            "{}",
+            fake.workspace[SYNC_LOG]
+        );
+    }
+
+    #[test]
+    fn bazel_failures_are_reported_with_bazel_output() {
+        let mut fake = Fake::new();
+        fake.info_exit = 2;
+        let Err(SyncError::Failed(m)) = sync(&mut fake) else {
+            panic!("expected a failure")
+        };
+        assert!(
+            m.contains("bazel info failed") && m.contains("ERROR: info failed"),
+            "{m}"
+        );
+        assert!(fake.workspace[SYNC_LOG].contains("Sync failed"));
+
+        let mut fake = Fake::new();
+        fake.build_exit = 2;
+        let Err(SyncError::Failed(m)) = sync(&mut fake) else {
+            panic!("expected a failure")
+        };
+        assert!(m.contains("aspect build failed"), "{m}");
+    }
+
+    #[test]
+    fn a_partial_build_still_syncs_with_a_warning() {
+        let mut fake = Fake::new();
+        fake.build_exit = 1;
+        let s = sync(&mut fake).unwrap();
+        assert_eq!(s.build_exit_code, 1);
+        assert!(!s.warnings.is_empty());
+    }
+
+    #[test]
+    fn cancelling_stops_the_sync() {
+        let mut fake = Fake::new();
+        fake.cancelled = true;
+        assert_eq!(sync(&mut fake), Err(SyncError::Cancelled));
+    }
+
+    #[test]
+    fn single_labels_are_told_from_patterns() {
+        assert!(is_single_label("//app:lib"));
+        for p in [
+            "-//app:lib",
+            "//app/...",
+            "//app/...:all",
+            "//app:all",
+            "//app:*",
+            "",
+        ] {
+            assert!(!is_single_label(p), "{p}");
+        }
     }
 }
