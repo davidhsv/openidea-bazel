@@ -1,0 +1,12 @@
+# Bazel's BUILD, WORKSPACE, MODULE.bazel and .bzl files. Starlark is a dialect of Python: the
+# Python highlighting and tree-sitter grammar read it. File types match on every dot-separated
+# suffix, so `bazel` covers BUILD.bazel, MODULE.bazel and WORKSPACE.bazel, and `bzlmod`
+# WORKSPACE.bzlmod.
+id = "starlark"
+name = "Starlark"
+extensions = ["bzl", "star", "bazel", "bzlmod"]
+filenames = ["BUILD", "WORKSPACE", "BUCK"]
+line-comment = "#"
+indent = { tab-size = 4, insert-spaces = true }
+ui-mode = "Python"
+tree-sitter = "python"

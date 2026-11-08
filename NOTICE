@@ -1,0 +1,13 @@
+openidea-bazel
+Copyright 2026 David Vieira
+
+This product ports, and ships a modified copy of, code from the Bazel plugin for
+IntelliJ (https://github.com/bazelbuild/intellij, branch ijwb), Copyright 2016 The
+Bazel Authors, licensed under the Apache License, Version 2.0.
+
+- aspect/: the plugin's Starlark aspect (aspect/*.bzl as realized for Bazel 7 by the
+  plugin's AspectTemplateWriter). Modified so that its tool jars (PackageParser,
+  JarFilter, CreateAar) are optional; changes are marked "openidea-bazel".
+- src/: Rust ports of the project view parser, ImportRoots, target derivation, the
+  aspect's output formats and the Java sync (JavaSourceFilter, SourceDirectoryCalculator,
+  BlazeJavaWorkspaceImporter).

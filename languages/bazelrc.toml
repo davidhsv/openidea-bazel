@@ -1,0 +1,9 @@
+# Bazel's startup and command options (`.bazelrc`, `user.bazelrc`): `command --flag` lines that the
+# shell highlighting reads well.
+id = "bazelrc"
+name = "Bazel RC"
+extensions = ["bazelrc"]
+filenames = [".bazelrc"]
+line-comment = "#"
+indent = { tab-size = 4, insert-spaces = true }
+ui-mode = "Shell"

@@ -12,9 +12,18 @@ description = "Bazel support for OpenIDEA: a port of the Bazel IntelliJ plugin's
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# The OpenIDEA plugin glue; off for tools that only use the sync pipeline (benchmarks under wasmtime).
+default = ["plugin"]
+plugin = []
+
 [dependencies]
 openidea-plugin = { git = "https://github.com/l0ng-ai/openidea", tag = "v0.1.39" }
 toml_edit = { version = "0.22", default-features = false, features = ["parse", "display"] }
+
+[[example]]
+name = "parse_corpus"
+required-features = []
 
 [profile.release]
 opt-level = "s"

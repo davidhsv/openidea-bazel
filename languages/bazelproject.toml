@@ -1,0 +1,9 @@
+# IntelliJ's Bazel project view (`.bazelproject`): `section:` headers with indented items, which
+# the YAML highlighting reads well.
+id = "bazelproject"
+name = "Bazel Project View"
+extensions = ["bazelproject"]
+filenames = [".bazelproject"]
+line-comment = "#"
+indent = { tab-size = 2, insert-spaces = true }
+ui-mode = "YAML"

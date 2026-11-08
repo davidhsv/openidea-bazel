@@ -19,7 +19,10 @@ impl ArtifactLocation {
         if self.root_execution_path_fragment.is_empty() {
             self.relative_path.clone()
         } else {
-            format!("{}/{}", self.root_execution_path_fragment, self.relative_path)
+            format!(
+                "{}/{}",
+                self.root_execution_path_fragment, self.relative_path
+            )
         }
     }
 
