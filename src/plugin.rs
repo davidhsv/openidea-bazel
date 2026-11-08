@@ -6,6 +6,8 @@ use openidea_plugin::{
     StatusItem, register_plugin,
 };
 
+use openidea_plugin::details::ProcessLog;
+
 use crate::fxhash::FxHashSet;
 use crate::ide;
 use crate::sync::{self, SYNC_LOG, SyncError, SyncSummary};
@@ -125,7 +127,7 @@ impl BazelPlugin {
         }
     }
 
-    /// Runs the focused file's test target through Bazel in a terminal, as IntelliJ's Bazel plugin
+    /// Runs the focused file's test target through Bazel in a log tab, as IntelliJ's Bazel plugin
     /// runs tests (`bazel test`); `debug` adds `--java_debug`, so the test JVM waits for a debugger
     /// on port 5005, which Attach to Process lists as a JDWP process.
     fn test_file(
@@ -169,14 +171,19 @@ impl BazelPlugin {
                     "a Bazel test target for {rel} (sync after adding it)"
                 ))
             })?;
-        let mut args = vec!["test".to_string(), label.clone(), "--color=yes".into()];
-        args.push(if debug {
-            "--java_debug".into()
+        // A log tab keeps the output (and the exit code) after Bazel ends, unlike a terminal tab.
+        let mode = if debug {
+            "--java_debug"
         } else {
-            "--test_output=streamed".into()
-        });
+            "--test_output=streamed"
+        };
+        let log = ProcessLog::new(&bazel, &["test", &label, "--color=no", "--curses=no", mode]);
         let verb = if debug { "Debug" } else { "Test" };
-        host::open_terminal(&format!("Bazel: {verb} {label}"), &bazel, &args)?;
+        host::open_log_tab(
+            &format!("{verb} {label}"),
+            &format!("Bazel {verb}: {label}"),
+            &log,
+        )?;
         if debug {
             let _ = host::notify_with_actions(
                 NotificationLevel::Info,
