@@ -32,6 +32,9 @@ const EXCLUDE_ALL: u32 = 2;
 const FOLDERS: u32 = 8;
 const INHERITABLE: u32 = 16;
 
+/// In the `.project` this plugin writes: a project with it has been synced.
+pub const GENERATED_MARKER: &str = "Generated from Bazel by openidea-bazel";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EclipseFiles {
     pub project: String,

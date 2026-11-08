@@ -36,6 +36,9 @@ title = "Bazel: Open Project View File"
 category = "Bazel"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
 
+[contributes.settings]
+schema = "settings.schema.json"
+
 [[contributes.languages]]
 path = "languages/starlark.toml"
 

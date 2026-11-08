@@ -1,0 +1,9 @@
+{
+  "properties": {
+    "syncOnOpen": {
+      "type": "boolean",
+      "title": "Sync a Bazel workspace that was never synced when it opens",
+      "default": true
+    }
+  }
+}

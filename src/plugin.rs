@@ -21,6 +21,8 @@ const BUILD_GLOBS: &[&str] = &[
     ".bazelrc",
 ];
 const STATUS: &str = "sync";
+/// Setting: sync a Bazel workspace that was never synced when it opens.
+const SYNC_ON_OPEN: &str = "syncOnOpen";
 
 #[derive(Default)]
 pub struct BazelPlugin {
@@ -41,17 +43,25 @@ impl Plugin for BazelPlugin {
         if ctx.capabilities.iter().any(|c| c == "events") {
             host::subscribe_paths("files-changed", BUILD_GLOBS)?;
         }
-        // On start-up, point Bazel workspaces that were never synced at the sync command.
-        if let Ok(projects) = host::projects() {
-            for project in projects {
-                if is_bazel_workspace(&project) && !project.exists(".classpath").unwrap_or(true) {
-                    let _ = host::notify_with_actions(
-                        NotificationLevel::Info,
-                        "Bazel workspace",
-                        "Sync the project with its BUILD files to resolve Java code from Bazel.",
-                        &[NotificationAction::new("Sync", "sync")],
-                    );
+        // IntelliJ's BlazeSyncStartupActivity: a workspace without project data syncs when it opens;
+        // one with data only restores it, which here is already on disk (the Eclipse project).
+        let sync_on_open = host::setting_bool(SYNC_ON_OPEN).unwrap_or(true);
+        for project in host::projects().unwrap_or_default() {
+            if !is_bazel_workspace(&project) || has_project_data(&project) {
+                continue;
+            }
+            if sync_on_open && self.bazel.is_some() {
+                // A cancelled or failed sync has told the user; it must not fail the activation.
+                if let Err(e) = self.sync(&project) {
+                    host::log(LogLevel::Info, &format!("sync on open: {e}"));
                 }
+            } else {
+                let _ = host::notify_with_actions(
+                    NotificationLevel::Info,
+                    "Bazel workspace",
+                    "Sync the project with its BUILD files to resolve Java code from Bazel.",
+                    &[NotificationAction::new("Sync", "sync")],
+                );
             }
         }
         Ok(())
@@ -170,6 +180,13 @@ fn notify_done(s: &SyncSummary) {
         body.push_str(" Restart the Java language server (language servers in the status bar › jdtls › Restart) to load the new classpath.");
     }
     let _ = host::notify_with_actions(level, "Bazel sync finished", &body, &actions);
+}
+
+/// Whether a sync already wrote the project (IntelliJ's "has project data").
+fn has_project_data(project: &Project) -> bool {
+    project
+        .read_file(".project")
+        .is_ok_and(|text| text.contains(crate::eclipse::GENERATED_MARKER))
 }
 
 fn is_bazel_workspace(project: &Project) -> bool {
@@ -305,9 +322,51 @@ mod tests {
     }
 
     #[test]
-    fn activation_prefers_bazelisk_watches_build_files_and_suggests_a_first_sync() {
+    fn a_never_synced_workspace_syncs_when_it_opens() {
         let host = MockHost::install().with_capabilities(ALL);
         host.add_file("MODULE.bazel", "module(name = \"demo\")\n");
+        activated(ALL);
+        assert_eq!(
+            host.tasks()[0].title,
+            "Bazel: Sync Project with BUILD Files"
+        );
+        assert!(read(&host, SYNC_LOG).is_some());
+    }
+
+    #[test]
+    fn a_synced_workspace_only_loads_when_it_opens() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file("MODULE.bazel", "");
+        host.add_file(
+            ".project",
+            "<projectDescription><comment>Generated from Bazel by openidea-bazel</comment></projectDescription>",
+        );
+        activated(ALL);
+        assert!(host.tasks().is_empty());
+        assert!(host.notifications_with_actions().is_empty());
+    }
+
+    #[test]
+    fn with_sync_on_open_off_or_no_bazel_grant_a_new_workspace_gets_a_hint() {
+        for (setting, caps) in [
+            ("false", ALL),
+            ("true", &["project.read", "project.write"][..]),
+        ] {
+            let host = MockHost::install().with_capabilities(caps);
+            host.set_setting(SYNC_ON_OPEN, setting);
+            host.add_file("MODULE.bazel", "");
+            activated(caps);
+            assert!(host.tasks().is_empty());
+            let hint = host.notifications_with_actions();
+            assert!(hint.iter().any(
+                |n| n.notification.title == "Bazel workspace" && n.actions[0].command == "sync"
+            ));
+        }
+    }
+
+    #[test]
+    fn activation_prefers_bazelisk_and_watches_build_files() {
+        let host = MockHost::install().with_capabilities(ALL);
         let plugin = activated(&[
             "project.read",
             "project.write",
@@ -317,24 +376,9 @@ mod tests {
         ]);
         assert_eq!(plugin.bazel.as_deref(), Some("bazelisk"));
         assert_eq!(host.path_subscriptions()["files-changed"], BUILD_GLOBS);
-        let hint = host.notifications_with_actions();
-        assert!(
-            hint.iter().any(
-                |n| n.notification.title == "Bazel workspace" && n.actions[0].command == "sync"
-            )
-        );
 
         let plugin = activated(&["project.read", "project.write", "process:bazel"]);
         assert_eq!(plugin.bazel.as_deref(), Some("bazel"));
-    }
-
-    #[test]
-    fn a_synced_workspace_gets_no_startup_hint() {
-        let host = MockHost::install().with_capabilities(ALL);
-        host.add_file("MODULE.bazel", "");
-        host.add_file(".classpath", "<classpath/>");
-        activated(ALL);
-        assert!(host.notifications_with_actions().is_empty());
     }
 
     #[test]
