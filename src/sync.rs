@@ -211,7 +211,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     host.report("Writing the Eclipse project");
     summary.project_changed =
         write_eclipse(host, &model, &workspace_name, log, &mut summary.warnings)?;
-    let data_dir = join(&private, &format!("jdtls/{:016x}", fnv1a(root.as_bytes())));
+    let data_dir = jdtls_data_dir(&private, &root);
     summary.settings_changed = write_settings(host, &data_dir, log)?;
     Ok(summary)
 }
@@ -449,6 +449,13 @@ fn check_cancel(host: &mut dyn SyncHost) -> Result<(), SyncError> {
 
 fn join(dir: &str, name: &str) -> String {
     format!("{}/{name}", dir.trim_end_matches('/'))
+}
+
+/// The workspace's jdtls data directory: one per workspace, stable across syncs (jdtls rereads the
+/// Eclipse project when it starts) whatever form the host gives the root in.
+fn jdtls_data_dir(private: &str, root: &str) -> String {
+    let root = root.trim_end_matches('/');
+    join(private, &format!("jdtls/{:016x}", fnv1a(root.as_bytes())))
 }
 
 /// A stable name for the workspace's jdtls data directory.
@@ -831,6 +838,18 @@ java_ide_info {
         let mut fake = Fake::new();
         fake.cancelled = true;
         assert_eq!(sync(&mut fake), Err(SyncError::Cancelled));
+    }
+
+    #[test]
+    fn the_jdtls_data_dir_does_not_depend_on_a_trailing_slash() {
+        assert_eq!(
+            jdtls_data_dir("/p", "/ws/demo"),
+            jdtls_data_dir("/p/", "/ws/demo/")
+        );
+        assert_ne!(
+            jdtls_data_dir("/p", "/ws/demo"),
+            jdtls_data_dir("/p", "/ws/other")
+        );
     }
 
     #[test]
