@@ -15,6 +15,8 @@ An [OpenIDEA](https://github.com/l0ng-ai/openidea) plugin that opens Java Bazel 
 
 Libraries are the jars Bazel built (class jars, so Run and Debug work), each with its source jar attached. Lombok is handled by OpenIDEA's own Lombok agent.
 
+Like IntelliJ's startup sync, a Bazel workspace that was never synced syncs by itself when it opens (setting **Sync a Bazel workspace that was never synced when it opens**, on by default); one that was synced just loads its project.
+
 After the **first** sync, restart OpenIDEA (Find Action › *Restart IDE*), since the IDE reads `.openidea/settings.toml` when a project opens. After later syncs, restart the Java language server from the language servers popup in the status bar. jdtls reads `.classpath` when it starts.
 
 Other features:
@@ -56,6 +58,7 @@ cargo run --release --example sync_cli -- /path/to/workspace   # the whole sync 
 - The whole sync runs in one plugin call, so a much larger workspace than the one above can exceed the CPU budget. Sharding, as IntelliJ's `shard_sync` does, would be the next step.
 - The aspect ships without IntelliJ's tool jars (PackageParser, JarFilter, CreateAar). Packages are read from the sources instead, and a target that mixes hand-written and generated sources contributes its whole jar.
 - Only Java is synced (no Kotlin, Scala, Python, C++, Go or Android).
+- The plugin runs as one instance in OpenIDEA, so syncs of several windows (worktrees) run one after another.
 
 ## License
 
