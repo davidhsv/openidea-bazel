@@ -212,7 +212,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     summary.project_changed =
         write_eclipse(host, &model, &workspace_name, log, &mut summary.warnings)?;
     let data_dir = join(&private, &format!("jdtls/{:016x}", fnv1a(root.as_bytes())));
-    summary.settings_changed = write_settings(host, &data_dir)?;
+    summary.settings_changed = write_settings(host, &data_dir, log)?;
     Ok(summary)
 }
 
@@ -356,22 +356,36 @@ fn write_eclipse(
     Ok(changed)
 }
 
-fn write_settings(host: &mut dyn SyncHost, jdtls_data_dir: &str) -> Result<bool, SyncError> {
+fn write_settings(
+    host: &mut dyn SyncHost,
+    jdtls_data_dir: &str,
+    log: &mut Vec<String>,
+) -> Result<bool, SyncError> {
     let existing = host.read_workspace(SETTINGS)?;
     let merged = settings::merge_openidea_settings(existing.as_deref(), jdtls_data_dir)
         .map_err(|e| format!("{SETTINGS} could not be updated: {e}"))?;
     let changed = write_if_changed(host, SETTINGS, &merged)?;
+    let patterns = [
+        "/.openidea/settings.toml",
+        "/.project",
+        "/.classpath",
+        "/.settings/",
+    ];
     if host.is_workspace_dir(".git") {
         let exclude = host.read_workspace(GIT_EXCLUDE)?;
-        let patterns = [
-            "/.openidea/settings.toml",
-            "/.project",
-            "/.classpath",
-            "/.settings/",
-        ];
         if let Some(text) = settings::ensure_git_excludes(exclude.as_deref(), &patterns) {
             host.write_workspace(GIT_EXCLUDE, &text)?;
         }
+    } else if host
+        .read_workspace(".git")?
+        .is_some_and(|t| t.starts_with("gitdir:"))
+    {
+        // A linked worktree shares the main checkout's `.git/info/exclude`, which is outside this
+        // project and so out of the plugin's reach.
+        log.push(format!(
+            "note: this is a Git worktree; to keep the generated files out of `git status`, add these lines to the main checkout's .git/info/exclude: {}",
+            patterns.join(" ")
+        ));
     }
     Ok(changed)
 }
@@ -793,6 +807,23 @@ java_ide_info {
         let s = sync(&mut fake).unwrap();
         assert_eq!(s.build_exit_code, 1);
         assert!(!s.warnings.is_empty());
+    }
+
+    #[test]
+    fn a_worktree_gets_a_note_instead_of_git_excludes() {
+        let mut fake = Fake::new();
+        fake.workspace.remove(".git/info/exclude");
+        fake.workspace.insert(
+            ".git".into(),
+            "gitdir: /ws/main/.git/worktrees/demo\n".into(),
+        );
+        sync(&mut fake).unwrap();
+        assert!(!fake.workspace.contains_key(".git/info/exclude"));
+        assert!(
+            fake.workspace[SYNC_LOG].contains("Git worktree"),
+            "{}",
+            fake.workspace[SYNC_LOG]
+        );
     }
 
     #[test]

@@ -1,0 +1,40 @@
+# What OpenIDEA's own CI runs for a plugin (its `plugins` job), plus `openidea-plugin check`
+# against the plugin API of the release this plugin targets, and the package as an artifact.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # The OpenIDEA release whose plugin API (1.3) and SDK the plugin is built against.
+  OPENIDEA_TAG: v0.1.39
+
+jobs:
+  plugin:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-wasip2, components: "clippy, rustfmt" }
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint (host and wasm)
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo clippy --locked --target wasm32-wasip2 --lib -- -D warnings
+      - name: Test
+        run: cargo test --locked
+      - name: Install openidea-plugin
+        run: cargo install --locked --git https://github.com/l0ng-ai/openidea --tag "$OPENIDEA_TAG" ide-host --bin openidea-plugin
+      - name: Build and check the package
+        run: openidea-plugin build
+      - name: Pack
+        run: openidea-plugin pack .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: davidhsv.bazel
+          path: "*.oiplugin"
