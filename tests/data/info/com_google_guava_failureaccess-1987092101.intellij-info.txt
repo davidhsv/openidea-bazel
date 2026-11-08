@@ -1,0 +1,42 @@
+build_file_artifact_location {
+  is_external: true
+  is_source: true
+  relative_path: "/BUILD"
+  root_execution_path_fragment: ""
+}
+java_ide_info {
+  jars {
+    interface_jar {
+      is_external: true
+      is_source: false
+      relative_path: "external/maven/com/google/guava/failureaccess/1.0.3/header_failureaccess-1.0.3.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    jar {
+      is_external: true
+      is_source: false
+      relative_path: "external/maven/com/google/guava/failureaccess/1.0.3/processed_failureaccess-1.0.3.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: true
+      is_source: false
+      relative_path: "external/maven/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3-sources.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: true
+      is_source: false
+      relative_path: "external/maven/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3-sources.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+}
+key {
+  label: "@@maven//:com_google_guava_failureaccess"
+}
+kind_string: "jvm_import"
+tags: "maven_coordinates=com.google.guava:failureaccess:1.0.3"
+tags: "maven_repository=https://nexus.allocadia.technology/nexus/content/repositories/central/"
+tags: "maven_sha256=cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
+tags: "maven_url=https://nexus.allocadia.technology/nexus/content/repositories/central/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar"

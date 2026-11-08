@@ -1,0 +1,45 @@
+build_file_artifact_location {
+  is_external: false
+  is_source: true
+  relative_path: "projects/uptempo/audit-api/src/main/proto/BUILD"
+  root_execution_path_fragment: ""
+}
+java_ide_info {
+  jars {
+    interface_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/audit-api/src/main/proto/libaudit_proto-speed-ijar.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/audit-api/src/main/proto/libaudit_proto-speed.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/audit-api/src/main/proto/audit_proto-speed-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/audit-api/src/main/proto/audit_proto-speed-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/audit-api/src/main/proto/audit_service.proto"
+    root_execution_path_fragment: ""
+  }
+}
+key {
+  aspect_ids: "@@_builtins//:common/java/proto/java_proto_library.bzl%bazel_java_proto_aspect"
+  label: "//projects/uptempo/audit-api/src/main/proto:audit_proto"
+}
+kind_string: "proto_library"

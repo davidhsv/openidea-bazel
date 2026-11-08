@@ -1,0 +1,24 @@
+[package]
+name = "openidea-bazel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "Bazel support for OpenIDEA: a port of the Bazel IntelliJ plugin's Java sync"
+
+# A plugin builds on its own (target wasm32-wasip2), outside any IDE workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openidea-plugin = { git = "https://github.com/l0ng-ai/openidea", tag = "v0.1.39" }
+toml_edit = { version = "0.22", default-features = false, features = ["parse", "display"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,194 @@
+build_file_artifact_location {
+  is_external: false
+  is_source: true
+  relative_path: "libs/commons/allocadia-util/BUILD"
+  root_execution_path_fragment: ""
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@rules_java~//toolchains:current_java_toolchain"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "//libs/commons/allocadia-logging:allocadia-logging"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:com_google_guava_guava"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:org_apache_commons_commons_lang3"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:org_springframework_spring_core"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:org_springframework_spring_web"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:software_amazon_awssdk_aws_core"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:software_amazon_awssdk_sdk_core"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:software_amazon_awssdk_utils"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_sso"
+  }
+}
+java_ide_info {
+  jars {
+    interface_jar {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/liballocadia-util-ijar.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/liballocadia-util.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/liballocadia-util-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/liballocadia-util-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+  jdeps {
+    is_external: false
+    is_source: false
+    relative_path: "libs/commons/allocadia-util/liballocadia-util.jdeps"
+    root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+  }
+  package_manifest {
+    is_external: false
+    is_source: false
+    relative_path: "libs/commons/allocadia-util/allocadia-util.java-manifest"
+    root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/Async.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/FixedValueFuture.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/ImmutableCollectors.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/InterruptibleLoop.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/IsoInstant.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/NioUtils.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/RandomAccessFileUtils.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/ReflectionUtils.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/StringSanitizer.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/SuperStream.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/ThreadClock.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/ThreadUtils.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/TriFunction.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "libs/commons/allocadia-util/src/main/java/com/allocadia/util/impl/ThreadClockImpl.java"
+    root_execution_path_fragment: ""
+  }
+}
+key {
+  label: "//libs/commons/allocadia-util:allocadia-util"
+}
+kind_string: "java_library"

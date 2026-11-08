@@ -1,0 +1,14 @@
+build_file_artifact_location {
+  is_external: true
+  is_source: true
+  relative_path: "toolchains/BUILD"
+  root_execution_path_fragment: ""
+}
+java_toolchain_ide_info {
+  source_version: "17"
+  target_version: "17"
+}
+key {
+  label: "@@rules_java~//toolchains:current_java_toolchain"
+}
+kind_string: "java_toolchain_alias"

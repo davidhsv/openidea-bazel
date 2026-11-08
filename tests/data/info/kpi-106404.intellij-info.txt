@@ -1,0 +1,210 @@
+build_file_artifact_location {
+  is_external: false
+  is_source: true
+  relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/BUILD"
+  root_execution_path_fragment: ""
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@rules_java~//toolchains:current_java_toolchain"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "//projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain:domain"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "//tools/java/lombok:lombok"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:org_springframework_spring_context"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:org_springframework_spring_core"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:org_projectlombok_lombok"
+  }
+}
+java_ide_info {
+  generated_jars {
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi-gen.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi-gensrc.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi-gensrc.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+  jars {
+    interface_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi-ijar.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+  jdeps {
+    is_external: false
+    is_source: false
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/libkpi.jdeps"
+    root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+  }
+  package_manifest {
+    is_external: false
+    is_source: false
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/kpi.java-manifest"
+    root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+  }
+  plugin_processor_jars {
+    jar {
+      is_external: true
+      is_source: false
+      relative_path: "external/maven/org/projectlombok/lombok/1.18.48/processed_lombok-1.18.48.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-opt-exec-ST-d57f47055a04/bin"
+    }
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiActual.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiActualQuantities.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiActualRepository.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiActualRollupTotal.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiActualService.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiPlan.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiPlanQuantities.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiPlanRepository.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiPlanService.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/ActivityKpiSummary.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/Kpi.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/KpiCalculationType.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/KpiMetadata.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/KpiRepository.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/KpiService.java"
+    root_execution_path_fragment: ""
+  }
+  sources {
+    is_external: false
+    is_source: true
+    relative_path: "projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi/KpiValueType.java"
+    root_execution_path_fragment: ""
+  }
+}
+key {
+  label: "//projects/uptempo/performance-management/src/main/java/io/uptempo/perf/domain/kpi:kpi"
+}
+kind_string: "java_library"

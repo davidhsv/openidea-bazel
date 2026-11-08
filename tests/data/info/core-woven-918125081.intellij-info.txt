@@ -1,0 +1,1262 @@
+build_file_artifact_location {
+  is_external: false
+  is_source: true
+  relative_path: "projects/uptempo/core-monolith/core/BUILD"
+  root_execution_path_fragment: ""
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_aspectj_aspectjrt"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core:expression-parser"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core:hooks"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-commons:core-commons"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-commons/src/main/java/com/allocadia/core/error:error"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-commons/src/main/java/com/allocadia/core/repository/persistence/id:id"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-commons/src/main/java/com/allocadia/core/aspect:aspect"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-commons/src/main/java/com/allocadia/core/aspect/annotation:annotation"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-commons/src/main/java/com/allocadia/core/audit:audit"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-db-migration:core-db-migration"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-events-model:dto"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-model:core-model"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-model:dto"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core-model:graphql-to"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/actions:actions"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/graphql/configuration:configuration"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/graphql/directive:directive"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/graphql/resolver:resolver"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/upaudit/core:core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/upaudit/diff:diff"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/upaudit/domain:domain"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/upaudit/extractor:extractor"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/exception/graphql:graphql"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/identity/user/contract:contract"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/logging:logging"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/persistence/ids:ids"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/service/actions/template:template"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/service/process:process"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/java/session/contract:contract"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/common/domain/id:id"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/common/domain/richtext:richtext"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/application/activityexport:activityexport"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/application/approvaldigest:approvaldigest"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/application/identity:identity"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/approvalprocess:approvalprocess"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/common/customization:customization"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/common/outbox:outbox"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/common/unavailable:unavailable"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/id:id"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/accesscontrol:accesscontrol"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/identity:identity"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/spend/api:api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/search:search"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/search/group:group"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/usersync/commands:commands"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/usersync/exceptions:exceptions"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/usersync/projections:projections"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/domain/usersync/queries:queries"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/infrastructure/context:context"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/planning/utils:utils"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/querydsl/table:table"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/com/allocadia/querydsl/utils:utils"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/clients/userplatform:userplatform"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/clients/userplatform/permission:permission"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/clients/userplatform/permission/commands:commands"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/clients/userplatform/permission/projections:projections"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/clients/userplatform/permission/queries:queries"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/core/src/main/java/io/uptempo/common/domain/exception:exception"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//projects/uptempo/core-monolith/planning-service-api/src/main/java/io/uptempo/strategy/api/java:java"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-env:allocadia-env"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-cache:allocadia-cache"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-dbutil:allocadia-dbutil"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-events:allocadia-events"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-events-spring:allocadia-events-spring"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-fileservice:allocadia-fileservice"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-id:allocadia-id"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-logging:allocadia-logging"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-parmesan:allocadia-parmesan"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-recipe:allocadia-recipe"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-test-utils/src/main/java/com/allocadia/workbooks:workbooks"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-util:allocadia-util"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-util/src/main/java/com/allocadia/util/cloudwatch:cloudwatch"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/rosetta/rosetta-runtime:rosetta-runtime"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:ca_derekcormier_recipe_recipe_java_runtime"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_esotericsoftware_kryo"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_fasterxml_jackson_core_jackson_annotations"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_fasterxml_jackson_core_jackson_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_fasterxml_jackson_core_jackson_databind"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_fasterxml_jackson_datatype_jackson_datatype_jsr310"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_github_mwiede_jsch"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_gooddata_cl_gooddata_cl_backend"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_gooddata_cl_gooddata_cl_cli"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_gooddata_cl_gooddata_cl_common"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_gooddata_cl_gooddata_cl_connector"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_google_code_gson_gson"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_google_gdata_gdata_java_client"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_google_guava_guava"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_graphql_java_generator_graphql_java_common_runtime"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_graphql_java_graphql_java"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_graphql_java_java_dataloader"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_ibm_icu_icu4j"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_lmax_disruptor"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_marketo_marketo_wsdl"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_mindscapehq_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_mysql_mysql_connector_j"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_newrelic_agent_java_newrelic_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_querydsl_querydsl_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_querydsl_querydsl_sql"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_querydsl_querydsl_sql_spring"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_rest_api_client"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_sun_mail_jakarta_mail"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_thoughtworks_xstream_xstream"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:com_veracode_annotation_VeracodeAnnotations"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_beanutils_commons_beanutils"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_cli_commons_cli"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_codec_commons_codec"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_collections_commons_collections"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_httpclient_commons_httpclient"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_io_commons_io"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_commons_commons_lang3"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_commons_commons_text"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_logging_commons_logging"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_net_commons_net"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:commons_validator_commons_validator"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:de_javakaffee_kryo_serializers"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:jakarta_annotation_jakarta_annotation_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:javax_annotation_javax_annotation_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:javax_cache_cache_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:jakarta_el_jakarta_el_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:javax_jdo_jdo_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:jakarta_servlet_jakarta_servlet_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:jakarta_servlet_jsp_jakarta_servlet_jsp_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:javax_xml_ws_jaxws_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:joda_time_joda_time"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_ehcache_ehcache_jakarta"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:net_sf_flexjson_flexjson"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:net_sf_supercsv_super_csv"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:net_sf_supercsv_super_csv_java8"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:net_sf_uadetector_uadetector_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:net_sf_uadetector_uadetector_resources"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:net_sourceforge_jexcelapi_jxl"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_antlr_antlr4_runtime"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_avro_avro"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_commons_commons_collections4"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_commons_commons_csv"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_httpcomponents_fluent_hc"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_httpcomponents_httpclient"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_httpcomponents_httpcore"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_kafka_kafka_clients"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_oltu_oauth2_org_apache_oltu_oauth2_client"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_poi_poi"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_apache_poi_poi_ooxml"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_aspectj_aspectjweaver"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_bouncycastle_bcpg_jdk18on"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_bouncycastle_bcprov_jdk18on"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_datanucleus_datanucleus_rdbms"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_dbunit_dbunit"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_freemarker_freemarker"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_jodd_jodd_util"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_json_json"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_objenesis_objenesis"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_quartz_scheduler_quartz"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_redisson_redisson"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_reflections_reflections"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_slf4j_slf4j_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_data_spring_data_redis"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_kafka_spring_kafka"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_aspects"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_config"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_crypto"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_oauth2_authorization_server"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_oauth2_client"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_oauth2_jose"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_oauth2_resource_server"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_saml2_service_provider"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_taglibs"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_security_spring_security_web"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_session_spring_session_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_session_spring_session_data_redis"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_redisson_redisson_spring_data_40"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_aspects"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_beans"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_context"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_context_support"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_core"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_expression"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_jdbc"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_messaging"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_orm"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_tx"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_web"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_springframework_spring_webmvc"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_tuckey_urlrewritefilter"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_auth"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_cloudwatch"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_glue"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_regions"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_secretsmanager"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_glue_schema_registry_serde"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_glue_schema_registry_common"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_url_connection_client"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:io_confluent_kafka_avro_serializer"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:jakarta_servlet_jsp_jstl_jakarta_servlet_jsp_jstl_api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:xom_xom"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@io_grpc_grpc_java//api:api"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@io_grpc_grpc_java//netty:shaded_maven"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@io_grpc_grpc_java//stub:stub"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@io_grpc_grpc_java//protobuf:protobuf"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_glassfish_web_jakarta_servlet_jsp_jstl"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_datanucleus_javax_jdo"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_javassist_javassist"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_joda_joda_convert"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:software_amazon_awssdk_sso"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//third_party/spring-orm/src/main/java/io/uptempo/springorm/jdo:jdo"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "@@maven//:org_datanucleus_datanucleus_api_jdo"
+  }
+}
+java_ide_info {
+  jars {
+    interface_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/core-monolith/core/core-woven.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/core-monolith/core/core-woven.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+}
+key {
+  label: "//projects/uptempo/core-monolith/core:core-woven"
+}
+kind_string: "_aspectj_weave"

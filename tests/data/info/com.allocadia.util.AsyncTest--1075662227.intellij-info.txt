@@ -1,0 +1,55 @@
+build_file_artifact_location {
+  is_external: false
+  is_source: true
+  relative_path: "libs/commons/allocadia-util/BUILD"
+  root_execution_path_fragment: ""
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@rules_java~//toolchains:current_java_toolchain"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@bazel_tools//tools/cpp:optional_current_cc_toolchain"
+  }
+}
+deps {
+  dependency_type: 1
+  target {
+    label: "//libs/commons/allocadia-util:tests"
+  }
+}
+java_ide_info {
+  jars {
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/com.allocadia.util.AsyncTest.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/com.allocadia.util.AsyncTest-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: false
+      is_source: false
+      relative_path: "libs/commons/allocadia-util/com.allocadia.util.AsyncTest-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+  main_class: ""
+  test_class: "com.allocadia.util.AsyncTest"
+}
+key {
+  label: "//libs/commons/allocadia-util:com.allocadia.util.AsyncTest"
+}
+kind_string: "java_test"
+test_info {
+  size: "small"
+}

@@ -1,0 +1,71 @@
+################################################################################
+# More info: https://ij.bazel.build/docs/project-views.html
+################################################################################
+
+directories:
+  .
+  -.claude/worktrees
+  -node_modules
+  -projects/uptempo/core-monolith/core/target
+  -projects/uptempo/core-monolith/core-commons/target
+  -projects/uptempo/core-monolith/core-commons-it/target
+  -projects/uptempo/core-monolith/core-db-migration/target
+  -projects/uptempo/core-monolith/core-events-model/target
+  -projects/uptempo/core-monolith/core-java-client/target
+  -projects/uptempo/core-monolith/core-model/target
+  -projects/uptempo/core-monolith/planning/target
+  -projects/uptempo/core-monolith/planning-service-api/target
+  -projects/uptempo/core-monolith/app/target
+  -libs/commons/target
+  -libs/commons/allocadia-cache/target
+  -libs/commons/allocadia-dbutil/target
+  -libs/commons/allocadia-events/target
+  -libs/commons/allocadia-events-spring/target
+  -libs/commons/allocadia-fileservice/target
+  -libs/commons/allocadia-id/target
+  -libs/commons/allocadia-logging/target
+  -libs/commons/allocadia-parmesan/target
+  -libs/commons/allocadia-recipe/target
+  -libs/commons/allocadia-recipe-maven-plugin/target
+  -libs/commons/allocadia-recipe-maven-plugin-testing/target
+  -libs/commons/allocadia-recipe-maven-plugin-testing/node_modules
+  -libs/commons/allocadia-test-utils/target
+  -libs/commons/allocadia-util/target
+  -libs/datastore/target
+  -libs/rosetta/rosetta-maven-plugin/target
+  -libs/rosetta/rosetta-maven-plugin-testing/target
+  -libs/rosetta/rosetta-maven-plugin-testing/node_modules
+  -libs/rosetta/rosetta-runtime/target
+  -projects/organizer-example/client/node_modules
+  -projects/eng-docsite/node_modules
+  -projects/uptempo/public-api/allocadia-api-tests/node_modules
+  -projects/uptempo/public-api/allocadia-api-tests/target
+  -projects/uptempo/public-api/allocadia-api/target
+  -projects/uptempo/e2e/protractor/target
+  -projects/uptempo/e2e/protractor/node_modules
+  -third_party/spring-orm/target
+  -projects/uptempo/web-client/target
+  -projects/uptempo/web-client/node_modules
+
+# Automatically includes all relevant targets under the 'directories' above
+derive_targets_from_directories: true
+
+targets:
+  # If source code isn't resolving, add additional targets that compile it here
+
+java_language_level: 17
+
+workspace_type: java
+
+additional_languages:
+  typescript
+  javascript
+
+ts_config_rules:
+  //:tsconfig
+  //projects/uptempo/web-client:tsconfig
+  //projects/uptempo/e2e/protractor:tsconfig
+  //libs/react:tsconfig
+
+test_sources:
+  */src/test/java*

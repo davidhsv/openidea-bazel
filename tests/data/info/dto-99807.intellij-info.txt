@@ -1,0 +1,80 @@
+build_file_artifact_location {
+  is_external: false
+  is_source: true
+  relative_path: "projects/uptempo/core-monolith/core-model/BUILD"
+  root_execution_path_fragment: ""
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@rules_java~//toolchains:current_java_toolchain"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:com_fasterxml_jackson_core_jackson_annotations"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:com_fasterxml_jackson_core_jackson_core"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "@@maven//:com_fasterxml_jackson_core_jackson_databind"
+  }
+}
+deps {
+  dependency_type: 0
+  target {
+    label: "//libs/rosetta/rosetta-runtime:rosetta-runtime"
+  }
+}
+java_ide_info {
+  jars {
+    interface_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/core-monolith/core-model/libdto-ijar.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/core-monolith/core-model/libdto.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jar {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/core-monolith/core-model/libdto-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+    source_jars {
+      is_external: false
+      is_source: false
+      relative_path: "projects/uptempo/core-monolith/core-model/libdto-src.jar"
+      root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+    }
+  }
+  jdeps {
+    is_external: false
+    is_source: false
+    relative_path: "projects/uptempo/core-monolith/core-model/libdto.jdeps"
+    root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+  }
+  sources {
+    is_external: false
+    is_source: false
+    relative_path: "projects/uptempo/core-monolith/core-model/dto.generated-java_generated.srcjar"
+    root_execution_path_fragment: "bazel-out/darwin_arm64-fastbuild/bin"
+  }
+}
+key {
+  label: "//projects/uptempo/core-monolith/core-model:dto"
+}
+kind_string: "java_library"
