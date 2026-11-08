@@ -151,7 +151,7 @@ impl BazelPlugin {
             .read_file(sync::TARGET_INDEX)
             .map_err(|_| Error::NotFound("the target index (sync the project first)".into()))?;
         // The class the file declares, as the test target names it: its `package` and its name.
-        let text = editor.document().map(|d| d.text).unwrap_or_default();
+        let text = project.read_file(&rel).unwrap_or_default();
         let stem = rel
             .rsplit('/')
             .next()
