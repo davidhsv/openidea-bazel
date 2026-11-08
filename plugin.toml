@@ -8,7 +8,7 @@ change-notes = "0.1.0 — first release: Sync Project with BUILD Files (aspect s
 categories = ["frameworks", "languages", "tools"]
 engines.openidea = "^1.3"
 wasm = "dist/plugin.wasm"
-activation = ["on-command:*", "on-startup-finished", "on-event:files-changed"]
+activation = ["on-command:*", "on-startup-finished", "on-event:files-changed", "on-event:editor-focused"]
 
 [capabilities]
 # project.write: the aspect (.openidea/bazel), the Eclipse project (.project, .classpath, .settings)

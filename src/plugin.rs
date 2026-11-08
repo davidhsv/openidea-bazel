@@ -6,6 +6,7 @@ use openidea_plugin::{
     StatusItem, register_plugin,
 };
 
+use crate::fxhash::FxHashSet;
 use crate::ide;
 use crate::sync::{self, SYNC_LOG, SyncError, SyncSummary};
 
@@ -28,6 +29,8 @@ const SYNC_ON_OPEN: &str = "syncOnOpen";
 pub struct BazelPlugin {
     /// The granted Bazel launcher: `bazelisk` (preferred, honours `.bazelversion`) or `bazel`.
     bazel: Option<String>,
+    /// Project roots already checked for a sync on open in this session.
+    opened: FxHashSet<String>,
 }
 
 impl Plugin for BazelPlugin {
@@ -43,26 +46,10 @@ impl Plugin for BazelPlugin {
         if ctx.capabilities.iter().any(|c| c == "events") {
             host::subscribe_paths("files-changed", BUILD_GLOBS)?;
         }
-        // IntelliJ's BlazeSyncStartupActivity: a workspace without project data syncs when it opens;
-        // one with data only restores it, which here is already on disk (the Eclipse project).
-        let sync_on_open = host::setting_bool(SYNC_ON_OPEN).unwrap_or(true);
+        // Projects already open when the plugin starts; the ones a window opens later come in
+        // through its first `editor-focused` event (see `handle_events`).
         for project in host::projects().unwrap_or_default() {
-            if !is_bazel_workspace(&project) || has_project_data(&project) {
-                continue;
-            }
-            if sync_on_open && self.bazel.is_some() {
-                // A cancelled or failed sync has told the user; it must not fail the activation.
-                if let Err(e) = self.sync(&project) {
-                    host::log(LogLevel::Info, &format!("sync on open: {e}"));
-                }
-            } else {
-                let _ = host::notify_with_actions(
-                    NotificationLevel::Info,
-                    "Bazel workspace",
-                    "Sync the project with its BUILD files to resolve Java code from Bazel.",
-                    &[NotificationAction::new("Sync", "sync")],
-                );
-            }
+            self.on_project_open(&project);
         }
         Ok(())
     }
@@ -87,7 +74,13 @@ impl Plugin for BazelPlugin {
         }
     }
 
-    fn handle_events(&mut self, events: &[Event], _ctx: &Invocation) {
+    fn handle_events(&mut self, events: &[Event], ctx: &Invocation) {
+        // A window reports its focused editor (or none) as soon as it starts: its project is open.
+        if events.iter().any(|e| matches!(e, Event::EditorFocused(_)))
+            && let Some(project) = ctx.project()
+        {
+            self.on_project_open(&project);
+        }
         let build_changed = events.iter().any(|e| match e {
             Event::FilesChanged(c) => c
                 .created
@@ -107,6 +100,29 @@ impl Plugin for BazelPlugin {
 }
 
 impl BazelPlugin {
+    /// IntelliJ's `BlazeSyncStartupActivity`, once per project and session: a Bazel workspace
+    /// without project data syncs when it opens; one with data only restores it, which here is
+    /// already on disk (the Eclipse project).
+    fn on_project_open(&mut self, project: &Project) {
+        let Ok(root) = project.root() else { return };
+        if !self.opened.insert(root) || !is_bazel_workspace(project) || has_project_data(project) {
+            return;
+        }
+        if host::setting_bool(SYNC_ON_OPEN).unwrap_or(true) && self.bazel.is_some() {
+            // A cancelled or failed sync has told the user already.
+            if let Err(e) = self.sync(project) {
+                host::log(LogLevel::Info, &format!("sync on open: {e}"));
+            }
+        } else {
+            let _ = host::notify_with_actions(
+                NotificationLevel::Info,
+                "Bazel workspace",
+                "Sync the project with its BUILD files to resolve Java code from Bazel.",
+                &[NotificationAction::new("Sync", "sync")],
+            );
+        }
+    }
+
     fn sync(&mut self, project: &Project) -> Result<Option<String>, Error> {
         let bazel = self
             .bazel
@@ -331,6 +347,21 @@ mod tests {
             "Bazel: Sync Project with BUILD Files"
         );
         assert!(read(&host, SYNC_LOG).is_some());
+    }
+
+    #[test]
+    fn a_window_opening_a_never_synced_workspace_syncs_it_once() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.set_project_root(None);
+        let mut plugin = activated(ALL);
+        assert!(host.tasks().is_empty(), "no project open yet");
+        host.set_project_root(Some("/project"));
+        host.add_file("MODULE.bazel", "");
+        let focused = [Event::EditorFocused(None)];
+        plugin.handle_events(&focused, &host.invocation());
+        assert_eq!(host.tasks().len(), 1);
+        plugin.handle_events(&focused, &host.invocation());
+        assert_eq!(host.tasks().len(), 1, "once per project and session");
     }
 
     #[test]

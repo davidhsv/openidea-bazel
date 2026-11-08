@@ -143,11 +143,36 @@ impl SyncHost for IdeHost<'_> {
     }
 }
 
-/// `NotFound` is an expected answer (a file Bazel didn't write), not an error.
+/// A missing file is an expected answer (a target Bazel wrote no info file for), not an error.
+/// OpenIDEA 0.1.39 reports one outside the project as `Invalid("<path>: no such file")` (its
+/// sandbox check canonicalizes the path first); inside the project, the host itself turns that
+/// same message into `NotFound` (`wit_host.rs`), so both mean the same here.
 fn optional<T>(r: Result<T, Error>) -> Result<Option<T>, String> {
     match r {
         Ok(v) => Ok(Some(v)),
         Err(Error::NotFound(_)) => Ok(None),
+        Err(Error::Invalid(m)) if m.ends_with("no such file") => Ok(None),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_file_is_none_however_the_host_reports_it() {
+        assert_eq!(optional::<()>(Err(Error::NotFound("x".into()))), Ok(None));
+        assert_eq!(
+            optional::<()>(Err(Error::Invalid("/ob/x.txt: no such file".into()))),
+            Ok(None)
+        );
+        assert_eq!(optional(Ok(1)), Ok(Some(1)));
+        assert!(optional::<()>(Err(Error::Invalid("binary content".into()))).is_err());
+        assert!(
+            optional::<()>(Err(Error::Denied("fs.read:/x".into())))
+                .unwrap_err()
+                .contains("fs.read:/x")
+        );
     }
 }
