@@ -414,6 +414,11 @@ fn execution_environment(level: u32) -> String {
     }
 }
 
+/// JDT's builder copies no resources (`resourceCopyExclusionFilter=*`): Bazel builds the real
+/// outputs, and IntelliJ's Bazel plugin doesn't use the IDE's compile output either. Copying them
+/// aborts the whole build when the output folder holds a file the jdtls workspace didn't write
+/// (a reset or new jdtls data directory), which class files survive but resources don't (measured
+/// with jdtls 1.63 in OpenIDEA 0.1.39).
 fn jdt_core_prefs(level: u32) -> String {
     let level = compliance(level);
     format!(
@@ -423,7 +428,7 @@ fn jdt_core_prefs(level: u32) -> String {
          org.eclipse.jdt.core.compiler.source={level}\n\
          org.eclipse.jdt.core.compiler.release=enabled\n\
          org.eclipse.jdt.core.builder.duplicateResourceTask=warning\n\
-         org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*.launch,BUILD,BUILD.bazel,*.bzl\n"
+         org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*\n"
     )
 }
 
@@ -635,7 +640,7 @@ org.eclipse.jdt.core.compiler.compliance=17
 org.eclipse.jdt.core.compiler.source=17
 org.eclipse.jdt.core.compiler.release=enabled
 org.eclipse.jdt.core.builder.duplicateResourceTask=warning
-org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*.launch,BUILD,BUILD.bazel,*.bzl
+org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*
 "
         );
         let paths: Vec<&str> = files.files().iter().map(|(p, _)| *p).collect();
