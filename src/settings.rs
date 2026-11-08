@@ -10,11 +10,15 @@ const MANAGED_MARKER: &str = "# Managed by openidea-bazel";
 
 /// `java.import.exclusions`: jdtls's own defaults plus Bazel's output symlinks and the folders of
 /// other build tools and IDEs, so jdtls never imports a Maven/Gradle project next to the Bazel one.
+/// `**/bazel-*` excludes the symlinks themselves: jdtls follows links while it looks for projects,
+/// and Bazel's execroot (`bazel-<workspace>`) links the workspace's own `.project` and `.classpath`,
+/// which would import the project a second time, at the execroot, sharing its output folder.
 pub const JDTLS_IMPORT_EXCLUSIONS: &[&str] = &[
     "**/node_modules/**",
     "**/.metadata/**",
     "**/archetype-resources/**",
     "**/META-INF/maven/**",
+    "**/bazel-*",
     "**/bazel-*/**",
     "**/.claude/**",
     "**/.worktrees/**",
@@ -268,7 +272,7 @@ mod tests {
 args = [\"-data\", \"{DATA_DIR}\"]
 
 [languageServers.jdtls.settings.java.import]
-exclusions = [\"**/node_modules/**\", \"**/.metadata/**\", \"**/archetype-resources/**\", \"**/META-INF/maven/**\", \"**/bazel-*/**\", \"**/.claude/**\", \"**/.worktrees/**\", \"**/target/**\", \"**/.ijwb/**\", \"**/.openidea/**\"]
+exclusions = [\"**/node_modules/**\", \"**/.metadata/**\", \"**/archetype-resources/**\", \"**/META-INF/maven/**\", \"**/bazel-*\", \"**/bazel-*/**\", \"**/.claude/**\", \"**/.worktrees/**\", \"**/target/**\", \"**/.ijwb/**\", \"**/.openidea/**\"]
 
 [languageServers.jdtls.settings.java.import.maven]
 enabled = false
