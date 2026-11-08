@@ -36,6 +36,28 @@ title = "Bazel: Open Project View File"
 category = "Bazel"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
 
+[[contributes.commands]]
+id = "test-file"
+title = "Bazel: Test File"
+category = "Bazel"
+when = "workspaceContains:.openidea/bazel/targets.tsv"
+
+[[contributes.commands]]
+id = "debug-test-file"
+title = "Bazel: Debug Test File"
+category = "Bazel"
+when = "workspaceContains:.openidea/bazel/targets.tsv"
+
+[[contributes.menus]]
+menu = "editor.context"
+command = "test-file"
+submenu = "Bazel"
+
+[[contributes.menus]]
+menu = "editor.context"
+command = "debug-test-file"
+submenu = "Bazel"
+
 [contributes.settings]
 schema = "settings.schema.json"
 

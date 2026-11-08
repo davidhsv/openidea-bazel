@@ -64,6 +64,8 @@ impl Plugin for BazelPlugin {
         match id {
             "sync" => self.sync(&project),
             "open-sync-log" => open(&project, SYNC_LOG),
+            "test-file" => self.test_file(&project, ctx, false),
+            "debug-test-file" => self.test_file(&project, ctx, true),
             "open-project-view" => {
                 if !project.exists(sync::PROJECT_VIEW)? {
                     project.write_file(sync::PROJECT_VIEW, DEFAULT_PROJECT_VIEW)?;
@@ -121,6 +123,58 @@ impl BazelPlugin {
                 &[NotificationAction::new("Sync", "sync")],
             );
         }
+    }
+
+    /// Runs the focused file's test target through Bazel in a terminal, as IntelliJ's Bazel plugin
+    /// runs tests (`bazel test`); `debug` adds `--java_debug`, so the test JVM waits for a debugger
+    /// on port 5005, which Attach to Process lists as a JDWP process.
+    fn test_file(
+        &mut self,
+        project: &Project,
+        ctx: &Invocation,
+        debug: bool,
+    ) -> Result<Option<String>, Error> {
+        let bazel = self
+            .bazel
+            .clone()
+            .ok_or_else(|| Error::Denied("process:bazelisk".into()))?;
+        let editor = ctx
+            .editor()
+            .ok_or("open the test file in an editor first")?;
+        let root = project.root()?;
+        let path = editor.path();
+        let rel = path
+            .strip_prefix(&format!("{}/", root.trim_end_matches('/')))
+            .unwrap_or(&path)
+            .to_string();
+        let index = project
+            .read_file(sync::TARGET_INDEX)
+            .map_err(|_| Error::NotFound("the target index (sync the project first)".into()))?;
+        let label = sync::test_targets_of(&index, &rel)
+            .first()
+            .map(|l| l.to_string())
+            .ok_or_else(|| {
+                Error::NotFound(format!(
+                    "a Bazel test target for {rel} (sync after adding it)"
+                ))
+            })?;
+        let mut args = vec!["test".to_string(), label.clone(), "--color=yes".into()];
+        args.push(if debug {
+            "--java_debug".into()
+        } else {
+            "--test_output=streamed".into()
+        });
+        let verb = if debug { "Debug" } else { "Test" };
+        host::open_terminal(&format!("Bazel: {verb} {label}"), &bazel, &args)?;
+        if debug {
+            let _ = host::notify_with_actions(
+                NotificationLevel::Info,
+                "Bazel test waiting for the debugger",
+                "The test JVM listens on port 5005 once Bazel starts it: Run › Attach to Process… (⌥⇧F5) and pick it.",
+                &[],
+            );
+        }
+        Ok(None)
     }
 
     fn sync(&mut self, project: &Project) -> Result<Option<String>, Error> {

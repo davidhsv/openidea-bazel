@@ -20,6 +20,9 @@ use crate::{aspect, types::JavaModel};
 pub const DATA_DIR: &str = ".openidea/bazel";
 pub const PROJECT_VIEW: &str = ".bazelproject";
 pub const SYNC_LOG: &str = ".openidea/bazel/last-sync.txt";
+/// Which targets build each source file (IntelliJ's `SourceToTargetMap`), for running and
+/// debugging a file's tests through Bazel: `path\tlabel\tkind` lines.
+pub const TARGET_INDEX: &str = ".openidea/bazel/targets.tsv";
 const SETTINGS: &str = ".openidea/settings.toml";
 const GIT_EXCLUDE: &str = ".git/info/exclude";
 /// The aspect's info files are read for the synced targets and their dependencies up to this
@@ -190,6 +193,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
         .collect();
     let target_map = read_target_map(host, &info, &labels, log)?;
     summary.info_files = target_map.len();
+    write_if_changed(host, TARGET_INDEX, &target_index(&target_map))?;
     check_cancel(host)?;
 
     host.report("Computing the Java project");
@@ -425,6 +429,36 @@ fn failure(step: &str, run: &BazelRun) -> SyncError {
         run.exit_code,
         run.stderr_tail.join("\n")
     ))
+}
+
+/// Main-repository sources and the targets building them, sorted (`path\tlabel\tkind`).
+pub fn target_index(targets: &TargetMap) -> String {
+    let mut lines: Vec<String> = targets
+        .values()
+        .filter(|t| t.key.aspect_ids.is_empty())
+        .flat_map(|t| {
+            t.java_ide_info
+                .iter()
+                .flat_map(|j| &j.sources)
+                .filter(|s| s.is_main_repo_source())
+                .map(move |s| format!("{}\t{}\t{}", s.relative_path, t.key.label, t.kind_string))
+        })
+        .collect();
+    lines.sort();
+    lines.dedup();
+    lines.join("\n") + "\n"
+}
+
+/// The test targets building `path` (workspace-relative), from a [`target_index`].
+pub fn test_targets_of<'a>(index: &'a str, path: &str) -> Vec<&'a str> {
+    index
+        .lines()
+        .filter_map(|l| {
+            let mut f = l.splitn(3, '\t');
+            let (p, label, kind) = (f.next()?, f.next()?, f.next()?);
+            (p == path && (kind.ends_with("_test") || kind == "test_suite")).then_some(label)
+        })
+        .collect()
 }
 
 /// A target pattern file line naming one target (not `-//x`, `//x/...` or `//x:all`).
@@ -850,6 +884,23 @@ java_ide_info {
             jdtls_data_dir("/p", "/ws/demo"),
             jdtls_data_dir("/p", "/ws/other")
         );
+    }
+
+    #[test]
+    fn the_target_index_finds_a_file_s_test_targets() {
+        let mut fake = Fake::new();
+        sync(&mut fake).unwrap();
+        let index = &fake.workspace[TARGET_INDEX];
+        assert_eq!(
+            index,
+            "app/src/main/java/com/x/A.java\t//app:lib\tjava_library\n"
+        );
+        let with_test = format!("{index}app/src/test/java/ATest.java\t//app:ATest\tjava_test\n");
+        assert_eq!(
+            test_targets_of(&with_test, "app/src/test/java/ATest.java"),
+            ["//app:ATest"]
+        );
+        assert!(test_targets_of(&with_test, "app/src/main/java/com/x/A.java").is_empty());
     }
 
     #[test]
