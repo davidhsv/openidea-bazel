@@ -150,7 +150,18 @@ impl BazelPlugin {
         let index = project
             .read_file(sync::TARGET_INDEX)
             .map_err(|_| Error::NotFound("the target index (sync the project first)".into()))?;
-        let label = sync::test_targets_of(&index, &rel)
+        // The class the file declares, as the test target names it: its `package` and its name.
+        let text = editor.document().map(|d| d.text).unwrap_or_default();
+        let stem = rel
+            .rsplit('/')
+            .next()
+            .unwrap_or(&rel)
+            .trim_end_matches(".java");
+        let class = match crate::model::declared_package(&text) {
+            Some(pkg) if !pkg.is_empty() => format!("{pkg}.{stem}"),
+            _ => stem.to_string(),
+        };
+        let label = sync::test_targets_of(&index, &rel, Some(&class))
             .first()
             .map(|l| l.to_string())
             .ok_or_else(|| {

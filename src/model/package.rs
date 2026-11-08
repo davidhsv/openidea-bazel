@@ -47,7 +47,7 @@ fn marker_end(dir: &str) -> Option<usize> {
 /// The declared package of a Java source: `^\s*package\s+([\w\.]+)` (`JavaSourcePackageReader`),
 /// scanning only the head of the file. Whitespace, a byte-order mark, comments and annotations
 /// (`package-info.java`) may precede the declaration; any other token means the file has none.
-pub(crate) fn declared_package(text: &str) -> Option<&str> {
+pub fn declared_package(text: &str) -> Option<&str> {
     let b = text.as_bytes();
     let mut i = if b.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
     loop {

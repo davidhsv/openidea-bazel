@@ -431,17 +431,26 @@ fn failure(step: &str, run: &BazelRun) -> SyncError {
     ))
 }
 
-/// Main-repository sources and the targets building them, sorted (`path\tlabel\tkind`).
+/// Main-repository sources and the targets building them, sorted (`path\tlabel\tkind`), plus
+/// `class:<test class>` lines for test targets that name their class instead of listing sources
+/// (one `java_test` per class over a shared library; IntelliJ's `TestTargetHeuristic` matches both).
 pub fn target_index(targets: &TargetMap) -> String {
     let mut lines: Vec<String> = targets
         .values()
         .filter(|t| t.key.aspect_ids.is_empty())
         .flat_map(|t| {
-            t.java_ide_info
-                .iter()
+            let java = t.java_ide_info.as_ref();
+            let sources = java
+                .into_iter()
                 .flat_map(|j| &j.sources)
-                .filter(|s| s.is_main_repo_source())
-                .map(move |s| format!("{}\t{}\t{}", s.relative_path, t.key.label, t.kind_string))
+                .filter(|s| s.is_main_repo_source());
+            let class = java
+                .filter(|j| !j.test_class.is_empty())
+                .map(|j| format!("class:{}", j.test_class));
+            sources
+                .map(|s| s.relative_path.clone())
+                .chain(class)
+                .map(move |key| format!("{key}\t{}\t{}", t.key.label, t.kind_string))
         })
         .collect();
     lines.sort();
@@ -449,16 +458,25 @@ pub fn target_index(targets: &TargetMap) -> String {
     lines.join("\n") + "\n"
 }
 
-/// The test targets building `path` (workspace-relative), from a [`target_index`].
-pub fn test_targets_of<'a>(index: &'a str, path: &str) -> Vec<&'a str> {
-    index
+/// The test targets for `path` (workspace-relative) whose class is `class` (`a.b.CTest`), from a
+/// [`target_index`]: test targets building the file, then those naming its class.
+pub fn test_targets_of<'a>(index: &'a str, path: &str, class: Option<&str>) -> Vec<&'a str> {
+    let class_key = class.map(|c| format!("class:{c}"));
+    let rows: Vec<(&str, &str, &str)> = index
         .lines()
         .filter_map(|l| {
             let mut f = l.splitn(3, '\t');
-            let (p, label, kind) = (f.next()?, f.next()?, f.next()?);
-            (p == path && (kind.ends_with("_test") || kind == "test_suite")).then_some(label)
+            Some((f.next()?, f.next()?, f.next()?))
         })
-        .collect()
+        .collect();
+    let is_test = |kind: &str| kind.ends_with("_test") || kind == "test_suite";
+    let by_source = rows.iter().filter(|(p, _, k)| *p == path && is_test(k));
+    let by_class = rows
+        .iter()
+        .filter(|(p, _, _)| Some(*p) == class_key.as_deref());
+    let mut labels: Vec<&str> = by_source.chain(by_class).map(|(_, l, _)| *l).collect();
+    labels.dedup();
+    labels
 }
 
 /// A target pattern file line naming one target (not `-//x`, `//x/...` or `//x:all`).
@@ -895,12 +913,29 @@ java_ide_info {
             index,
             "app/src/main/java/com/x/A.java\t//app:lib\tjava_library\n"
         );
-        let with_test = format!("{index}app/src/test/java/ATest.java\t//app:ATest\tjava_test\n");
+        let with_test = format!(
+            "{index}app/src/test/java/ATest.java\t//app:ATest\tjava_test\nclass:x.BTest\t//app:x.BTest\tjava_test\n"
+        );
         assert_eq!(
-            test_targets_of(&with_test, "app/src/test/java/ATest.java"),
+            test_targets_of(&with_test, "app/src/test/java/ATest.java", None),
             ["//app:ATest"]
         );
-        assert!(test_targets_of(&with_test, "app/src/main/java/com/x/A.java").is_empty());
+        assert_eq!(
+            test_targets_of(
+                &with_test,
+                "app/src/test/java/x/BTest.java",
+                Some("x.BTest")
+            ),
+            ["//app:x.BTest"]
+        );
+        assert!(
+            test_targets_of(
+                &with_test,
+                "app/src/main/java/com/x/A.java",
+                Some("com.x.A")
+            )
+            .is_empty()
+        );
     }
 
     #[test]

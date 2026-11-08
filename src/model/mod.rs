@@ -6,6 +6,8 @@ mod glob;
 mod jdeps;
 mod libs;
 mod package;
+
+pub use package::declared_package;
 mod paths;
 mod roots;
 #[cfg(test)]
@@ -18,7 +20,7 @@ use crate::fxhash::FxHashMap;
 use classify::{Classified, classify, java_sources};
 use glob::GlobSet;
 use libs::LibraryInputs;
-use package::{declared_package, package_prefix_of};
+use package::package_prefix_of;
 use paths::{PathDecoder, is_under, parent};
 use roots::{DirPackage, content_root_folders};
 
