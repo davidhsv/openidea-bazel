@@ -5,8 +5,8 @@ use std::collections::{HashMap, HashSet};
 use super::{SyncFiles, build_java_model};
 use crate::types::{
     ArtifactLocation, BazelInfo, Dependency, DependencyType, ImportRoots, JavaIdeInfo, JavaModel,
-    JavaToolchainIdeInfo, Library, LibraryArtifact, ProjectView, SourceRoot, TargetIdeInfo,
-    TargetKey, TargetMap,
+    JavaToolchainIdeInfo, Library, LibraryArtifact, MovedSource, ProjectView, SourceRoot,
+    TargetIdeInfo, TargetKey, TargetMap,
 };
 
 const BIN: &str = "bazel-out/darwin_arm64-fastbuild/bin";
@@ -414,11 +414,12 @@ fn allocadia_util_source_folders_and_test_flags() {
             root("libs/commons/allocadia-util/src/test/java", "", true),
         ]
     );
-    // One read per source directory: the first file of util/, util/impl/ and the test directory.
+    // Every source is read, as IntelliJ does, so a source of another package is seen.
     assert_eq!(
         files.workspace_reads,
         [
             "libs/commons/allocadia-util/src/main/java/com/allocadia/util/Async.java",
+            "libs/commons/allocadia-util/src/main/java/com/allocadia/util/ThreadClock.java",
             "libs/commons/allocadia-util/src/main/java/com/allocadia/util/impl/ThreadClockImpl.java",
             "libs/commons/allocadia-util/src/test/java/com/allocadia/util/AsyncTest.java",
         ]
@@ -732,7 +733,11 @@ fn generated_jars_follow_dependency_jars() {
     );
     let mut files = FakeFiles::default();
     files
-        .sources(&[&format!("{KPI}/Kpi.java"), &format!("{DOMAIN}/Entity.java")])
+        .sources(&[
+            &format!("{KPI}/Kpi.java"),
+            &format!("{KPI}/KpiService.java"),
+            &format!("{DOMAIN}/Entity.java"),
+        ])
         .jdeps(&format!("{KPI}/libkpi.jdeps"), fixture("libkpi.jdeps"))
         .exist(&[
             maven_path(lombok, "processed_", ""),
@@ -1039,7 +1044,7 @@ fn nested_test_directory_is_a_warning() {
 }
 
 #[test]
-fn first_file_decides_a_directory_with_conflicting_packages() {
+fn the_most_common_package_decides_and_a_source_of_another_package_is_moved() {
     let t = library(
         "//a:a",
         "java_library",
@@ -1064,11 +1069,49 @@ fn first_file_decides_a_directory_with_conflicting_packages() {
         &whole_workspace(),
         &mut files,
     );
-    assert_eq!(files.workspace_reads, ["a/src/main/java/com/x/A.java"]);
     assert_eq!(
-        model.source_roots,
-        [root("a/src/main/java/com", "org.other", false)]
+        files.workspace_reads,
+        [
+            "a/src/main/java/com/x/A.java",
+            "a/src/main/java/com/x/B.java",
+            "a/src/main/java/com/x/C.java",
+        ]
     );
+    assert_eq!(model.source_roots, [root("a/src/main/java", "", false)]);
+    assert_eq!(
+        model.moved_sources,
+        [MovedSource {
+            path: "a/src/main/java/com/x/A.java".to_owned(),
+            package: "org.other.x".to_owned(),
+            is_test: false,
+        }]
+    );
+}
+
+#[test]
+fn a_tie_goes_to_the_package_the_directory_implies() {
+    let t = library(
+        "//a:a",
+        "java_library",
+        &[
+            "a/src/main/java/com/x/A.java",
+            "a/src/main/java/com/x/B.java",
+        ],
+        vec![],
+    );
+    let mut files = FakeFiles::default();
+    files
+        .java("a/src/main/java/com/x/A.java", "package org.other.x;")
+        .java("a/src/main/java/com/x/B.java", "package com.x;");
+    let model = build(
+        &map(vec![t]),
+        &allocadia_view(),
+        &whole_workspace(),
+        &mut files,
+    );
+    assert_eq!(model.source_roots, [root("a/src/main/java", "", false)]);
+    assert_eq!(model.moved_sources.len(), 1);
+    assert_eq!(model.moved_sources[0].package, "org.other.x");
 }
 
 #[test]

@@ -3,6 +3,12 @@
 //! The whole workspace is one Eclipse project, like IntelliJ's single `.workspace` module
 //! (`BlazeJavaWorkspaceImporter` / `ContentEntryEditor`): every source root becomes a `src`
 //! entry, every library jar a `lib` entry, and excluded directories become resource filters.
+//!
+//! Eclipse has no package prefix on a source folder, and finds a type only at the path its
+//! package names. Both are expressed with linked resources under the virtual folder
+//! [`LINKED_SOURCES`]: a root with a package prefix is linked at the prefix's path, and a source
+//! whose package differs from its directory's is linked at its package's path (and excluded
+//! where it really is). IntelliJ reports such a source as misplaced; here it resolves.
 
 use crate::types::JavaModel;
 use std::collections::BTreeMap;
@@ -32,6 +38,9 @@ const EXCLUDE_ALL: u32 = 2;
 const FOLDERS: u32 = 8;
 const INHERITABLE: u32 = 16;
 
+/// The virtual folder of the linked source folders (see the module docs).
+pub const LINKED_SOURCES: &str = ".openidea-src";
+
 /// In the `.project` this plugin writes: a project with it has been synced.
 pub const GENERATED_MARKER: &str = "Generated from Bazel by openidea-bazel";
 
@@ -40,6 +49,10 @@ pub struct EclipseFiles {
     pub project: String,
     pub classpath: String,
     pub jdt_core_prefs: String,
+    /// The names of the project's linked resources, one per line (empty without any). jdtls
+    /// creates linked resources only when it imports a project, not when an imported project's
+    /// `.project` gains them, so a new set of links needs a new jdtls workspace.
+    pub links_key: String,
     /// What the model holds that the Eclipse project cannot express, and was left out.
     pub warnings: Vec<String>,
 }
@@ -67,13 +80,21 @@ pub fn emit(model: &JavaModel, project_name: &str) -> EclipseFiles {
         }
         level => level,
     };
-    let project = project_xml(project_name, &excludes);
-    let classpath = classpath_xml(model, &excludes, level, &mut warnings);
+    let mut links = Links::default();
+    let classpath = classpath_xml(model, &excludes, level, &mut links, &mut warnings);
+    let project = project_xml(project_name, &excludes, &links);
     let jdt_core_prefs = jdt_core_prefs(level);
+    let links_key = links
+        .0
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
     EclipseFiles {
         project,
         classpath,
         jdt_core_prefs,
+        links_key,
         warnings,
     }
 }
@@ -95,7 +116,29 @@ struct Filter<'a> {
     regex: String,
 }
 
-fn project_xml(project_name: &str, excludes: &[&str]) -> String {
+/// The project's linked resources, by project-relative name: `None` is a virtual folder, else the
+/// absolute location of a linked folder or file. Name order puts every folder before its content.
+#[derive(Default)]
+struct Links(BTreeMap<String, Option<(String, bool)>>);
+
+impl Links {
+    /// Links `name` to `location`, with virtual folders above it; false when the name is taken.
+    fn link(&mut self, name: String, location: String, is_file: bool) -> bool {
+        if self.0.contains_key(&name) {
+            return false;
+        }
+        let mut end = 0;
+        while let Some(i) = name[end..].find('/') {
+            end += i;
+            self.0.entry(name[..end].to_owned()).or_insert(None);
+            end += 1;
+        }
+        self.0.insert(name, Some((location, is_file)));
+        true
+    }
+}
+
+fn project_xml(project_name: &str, excludes: &[&str], links: &Links) -> String {
     let mut filters = vec![
         Filter {
             container: "",
@@ -146,9 +189,32 @@ fn project_xml(project_name: &str, excludes: &[&str]) -> String {
          \t</buildSpec>\n\
          \t<natures>\n\
          \t\t<nature>org.eclipse.jdt.core.javanature</nature>\n\
-         \t</natures>\n\
-         \t<filteredResources>\n",
+         \t</natures>\n",
     );
+    if !links.0.is_empty() {
+        out.push_str("\t<linkedResources>\n");
+        for (name, target) in &links.0 {
+            out.push_str("\t\t<link>\n\t\t\t<name>");
+            push_xml_escaped(&mut out, name);
+            out.push_str("</name>\n\t\t\t<type>");
+            match target {
+                None => {
+                    out.push_str("2</type>\n\t\t\t<locationURI>virtual:/virtual</locationURI>\n")
+                }
+                // An absolute location: jdtls reports definitions in a file linked with
+                // `PROJECT_LOC/…` under that literal URI (measured with jdtls 1.63).
+                Some((location, is_file)) => {
+                    out.push_str(if *is_file { "1" } else { "2" });
+                    out.push_str("</type>\n\t\t\t<location>");
+                    push_xml_escaped(&mut out, location);
+                    out.push_str("</location>\n");
+                }
+            }
+            out.push_str("\t\t</link>\n");
+        }
+        out.push_str("\t</linkedResources>\n");
+    }
+    out.push_str("\t<filteredResources>\n");
     for (i, filter) in filters.iter().enumerate() {
         out.push_str("\t\t<filter>\n\t\t\t<id>");
         out.push_str(&(i + 1).to_string());
@@ -234,6 +300,7 @@ fn classpath_xml(
     model: &JavaModel,
     excludes: &[&str],
     level: u32,
+    links: &mut Links,
     warnings: &mut Vec<String>,
 ) -> String {
     // Eclipse rejects a classpath with the same `src` path twice: a directory listed as both main
@@ -263,56 +330,120 @@ fn classpath_xml(
     }
     let nested = nested_roots(&roots);
     let exclude_set: BTreeSet<&str> = excludes.iter().copied().collect();
+    let workspace = model.workspace_root.trim_end_matches('/');
+    let absolute = |path: &str| {
+        if path.is_empty() {
+            workspace.to_owned()
+        } else {
+            format!("{workspace}/{path}")
+        }
+    };
 
-    let mut out = String::with_capacity(256 + roots.len() * 256 + model.libraries.len() * 320);
-    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<classpath>\n");
-    for (i, root) in roots.iter().enumerate() {
+    // Each root's `src` entry, and where the root's directory is inside it: a root with a
+    // package prefix is a linked folder at the prefix's path.
+    let mut entries: Vec<Option<(String, String)>> = Vec::with_capacity(roots.len());
+    for root in &roots {
         if hidden_by_filters(root.path, &exclude_set) {
             warnings.push(format!(
                 "source root `{}` is inside an excluded directory: left out",
                 root.path
             ));
+            entries.push(None);
+        } else if root.package_prefix.is_empty() {
+            entries.push(Some((root.path.to_owned(), String::new())));
+        } else {
+            // Named after the root, not its position, so that other roots coming and going
+            // leave the links (and with them the jdtls workspace) as they are.
+            let entry = format!(
+                "{LINKED_SOURCES}/prefixed-{:08x}",
+                crate::fxhash::fingerprint(root.path) >> 32
+            );
+            let inner = root.package_prefix.replace('.', "/");
+            links.link(format!("{entry}/{inner}"), absolute(root.path), false);
+            entries.push(Some((entry, inner)));
+        }
+    }
+
+    // Sources whose package differs from their directory's: linked at their package's path, and
+    // excluded from the root that holds them.
+    let mut moved_out: Vec<Vec<String>> = vec![Vec::new(); roots.len()];
+    let mut moved_in = [0usize; 2];
+    let mut taken = 0usize;
+    for source in &model.moved_sources {
+        let holder = roots
+            .iter()
+            .enumerate()
+            .filter(|&(i, r)| entries[i].is_some() && is_ancestor(r.path, &source.path))
+            .max_by_key(|(_, r)| r.path.len());
+        let (Some((i, root)), Some(file)) = (holder, source.path.rsplit('/').next()) else {
+            continue;
+        };
+        let group = format!(
+            "{LINKED_SOURCES}/{}",
+            if source.is_test { "test" } else { "main" }
+        );
+        let name = if source.package.is_empty() {
+            format!("{group}/{file}")
+        } else {
+            format!("{group}/{}/{file}", source.package.replace('.', "/"))
+        };
+        if !links.link(name, absolute(&source.path), true) {
+            taken += 1;
             continue;
         }
-        if !root.package_prefix.is_empty() {
-            warnings.push(format!(
-                "source root `{}` has package prefix `{}`, which Eclipse cannot express: left out",
-                root.path, root.package_prefix
-            ));
+        let inner = entries[i].as_ref().map_or("", |(_, inner)| inner.as_str());
+        moved_out[i].push(entry_relative(root.path, inner, &source.path));
+        moved_in[usize::from(source.is_test)] += 1;
+    }
+    let linked = moved_in[0] + moved_in[1];
+    if linked > 0 {
+        warnings.push(format!(
+            "{linked} sources declare a package other than their directory's: linked at their package's path"
+        ));
+    }
+    if taken > 0 {
+        warnings.push(format!(
+            "{taken} sources declare the same package and file name as another one: left where they are"
+        ));
+    }
+
+    let mut out = String::with_capacity(256 + roots.len() * 256 + model.libraries.len() * 320);
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<classpath>\n");
+    for (i, root) in roots.iter().enumerate() {
+        let Some((entry, inner)) = &entries[i] else {
             continue;
-        }
+        };
         out.push_str("\t<classpathentry kind=\"src\" path=\"");
-        push_xml_escaped(&mut out, root.path);
+        push_xml_escaped(&mut out, entry);
         out.push_str("\" excluding=\"");
         out.push_str(BAZEL_FILE_EXCLUSIONS);
         if root.path.is_empty() {
-            // The project folder holds the output folder, which must not be a source.
-            out.push_str("|.openidea/");
+            // The project folder holds the output folder, which must not be a source, and the
+            // linked sources, which have entries of their own.
+            out.push_str("|.openidea/|");
+            out.push_str(LINKED_SOURCES);
+            out.push('/');
         }
-        for &inner in &nested[i] {
-            let inner = roots[inner].path;
+        for &nested in &nested[i] {
             out.push('|');
             push_xml_escaped(
                 &mut out,
-                if root.path.is_empty() {
-                    inner
-                } else {
-                    &inner[root.path.len() + 1..]
-                },
+                &entry_relative(root.path, inner, roots[nested].path),
             );
             out.push('/');
         }
-        out.push_str("\" output=\"");
-        out.push_str(if root.is_test {
-            OUTPUT_TEST
-        } else {
-            OUTPUT_MAIN
-        });
-        if root.is_test {
-            out.push_str("\">\n");
-            push_test_attribute(&mut out);
-        } else {
-            out.push_str("\"/>\n");
+        for moved in &moved_out[i] {
+            out.push('|');
+            push_xml_escaped(&mut out, moved);
+        }
+        push_source_end(&mut out, root.is_test);
+    }
+    for (is_test, count) in [(false, moved_in[0]), (true, moved_in[1])] {
+        if count > 0 {
+            out.push_str("\t<classpathentry kind=\"src\" path=\"");
+            out.push_str(LINKED_SOURCES);
+            out.push_str(if is_test { "/test" } else { "/main" });
+            push_source_end(&mut out, is_test);
         }
     }
 
@@ -327,6 +458,33 @@ fn classpath_xml(
     out.push_str(OUTPUT_MAIN);
     out.push_str("\"/>\n</classpath>\n");
     out
+}
+
+/// Where `path`, at or below `root_path`, is inside the root's `src` entry, whose own directory
+/// is `inner` in it.
+fn entry_relative(root_path: &str, inner: &str, path: &str) -> String {
+    let rel = if root_path.is_empty() {
+        path
+    } else {
+        &path[root_path.len() + 1..]
+    };
+    if inner.is_empty() {
+        rel.to_owned()
+    } else {
+        format!("{inner}/{rel}")
+    }
+}
+
+/// The rest of a `src` entry after its `excluding` patterns: its output folder and test flag.
+fn push_source_end(out: &mut String, is_test: bool) {
+    out.push_str("\" output=\"");
+    out.push_str(if is_test { OUTPUT_TEST } else { OUTPUT_MAIN });
+    if is_test {
+        out.push_str("\">\n");
+        push_test_attribute(out);
+    } else {
+        out.push_str("\"/>\n");
+    }
 }
 
 struct Lib<'a> {
@@ -469,7 +627,7 @@ fn push_regex_escaped(out: &mut String, s: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Library, SourceRoot};
+    use crate::types::{Library, MovedSource, SourceRoot};
 
     fn root(path: &str, is_test: bool) -> SourceRoot {
         SourceRoot {
@@ -496,6 +654,7 @@ mod tests {
         JavaModel {
             workspace_root: "/ws".to_owned(),
             source_roots,
+            moved_sources: Vec::new(),
             libraries,
             excludes: excludes.iter().map(|e| (*e).to_owned()).collect(),
             language_level: level,
@@ -503,19 +662,49 @@ mod tests {
         }
     }
 
-    /// The `src` entries' `path` and `excluding` attributes.
+    /// The `src` entries' `path` and `excluding` attributes (empty without one).
     fn src_entries(classpath: &str) -> Vec<(String, String)> {
         classpath
             .lines()
             .filter(|l| l.contains("kind=\"src\""))
-            .map(|l| (attr(l, "path").to_owned(), attr(l, "excluding").to_owned()))
+            .map(|l| {
+                (
+                    attr(l, "path").unwrap().to_owned(),
+                    attr(l, "excluding").unwrap_or_default().to_owned(),
+                )
+            })
             .collect()
     }
 
-    fn attr<'a>(line: &'a str, name: &str) -> &'a str {
-        let start = line.find(&format!(" {name}=\"")).unwrap() + name.len() + 3;
-        let end = start + line[start..].find('"').unwrap();
-        &line[start..end]
+    fn attr<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+        let start = line.find(&format!(" {name}=\""))? + name.len() + 3;
+        let end = start + line[start..].find('"')?;
+        Some(&line[start..end])
+    }
+
+    /// The `src` entry of the root at `path` with a package prefix.
+    fn prefixed(path: &str) -> String {
+        format!(
+            "{LINKED_SOURCES}/prefixed-{:08x}",
+            crate::fxhash::fingerprint(path) >> 32
+        )
+    }
+
+    /// `(name, location)` of every linked resource in a `.project`.
+    fn links(project: &str) -> Vec<(String, String)> {
+        let tag = |block: &str, name: &str| {
+            let open = format!("<{name}>");
+            let start = block.find(&open)? + open.len();
+            Some(block[start..start + block[start..].find("</")?].to_owned())
+        };
+        project
+            .split("<link>")
+            .skip(1)
+            .map(|l| {
+                let location = tag(l, "location").or_else(|| tag(l, "locationURI"));
+                (tag(l, "name").unwrap(), location.unwrap())
+            })
+            .collect()
     }
 
     /// `(container, type, regex)` of every filter in a `.project`.
@@ -736,7 +925,7 @@ org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*
             entries[0],
             (
                 "".to_owned(),
-                format!("{BAZEL_FILE_EXCLUSIONS}|.openidea/|java/src/|t/")
+                format!("{BAZEL_FILE_EXCLUSIONS}|.openidea/|.openidea-src/|java/src/|t/")
             )
         );
         assert_eq!(
@@ -750,7 +939,7 @@ org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*
     }
 
     #[test]
-    fn package_prefix_roots_are_skipped_with_a_warning_but_still_excluded_from_outer_roots() {
+    fn package_prefix_roots_are_linked_at_the_prefix_path_and_excluded_from_outer_roots() {
         // `tools/rules` is a root with `packagePrefix="com.allocadia.tools"` in Allocadia's `.workspace.iml`.
         let m = model(
             vec![
@@ -774,6 +963,7 @@ org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*
                     "tools".to_owned(),
                     format!("{BAZEL_FILE_EXCLUSIONS}|rules/|sanity/tests/java/")
                 ),
+                (prefixed("tools/rules"), BAZEL_FILE_EXCLUSIONS.to_owned()),
                 (
                     "tools/sanity/tests/java".to_owned(),
                     BAZEL_FILE_EXCLUSIONS.to_owned()
@@ -781,9 +971,114 @@ org.eclipse.jdt.core.builder.resourceCopyExclusionFilter=*
             ]
         );
         assert_eq!(
+            links(&files.project),
+            [
+                (".openidea-src".to_owned(), "virtual:/virtual".to_owned()),
+                (prefixed("tools/rules"), "virtual:/virtual".to_owned()),
+                (
+                    format!("{}/com", prefixed("tools/rules")),
+                    "virtual:/virtual".to_owned()
+                ),
+                (
+                    format!("{}/com/allocadia", prefixed("tools/rules")),
+                    "virtual:/virtual".to_owned()
+                ),
+                (
+                    format!("{}/com/allocadia/tools", prefixed("tools/rules")),
+                    "/ws/tools/rules".to_owned()
+                ),
+            ]
+        );
+        assert!(files.warnings.is_empty(), "{:?}", files.warnings);
+    }
+
+    #[test]
+    fn sources_of_another_package_are_linked_at_its_path_and_excluded_where_they_are() {
+        let mut m = model(
+            vec![
+                root("", false),
+                root("app/src/main/java", false),
+                SourceRoot {
+                    path: "tools/rules".to_owned(),
+                    package_prefix: "com.t".to_owned(),
+                    is_test: false,
+                },
+                root("app/src/test/java", true),
+            ],
+            vec![],
+            &[],
+            17,
+        );
+        let moved = |path: &str, package: &str, is_test| MovedSource {
+            path: path.to_owned(),
+            package: package.to_owned(),
+            is_test,
+        };
+        m.moved_sources = vec![
+            moved("app/src/main/java/com/a/Visibility.java", "com.b", false),
+            moved("tools/rules/x/Odd.java", "com.c", false),
+            moved("app/src/test/java/com/a/OddTest.java", "com.b", true),
+            moved("Top.java", "", false),
+            // Same package and name as the first: left where it is.
+            moved("app/src/main/java/com/z/Visibility.java", "com.b", false),
+        ];
+        let files = emit(&m, "p");
+        assert_eq!(
+            src_entries(&files.classpath),
+            [
+                (
+                    "".to_owned(),
+                    format!(
+                        "{BAZEL_FILE_EXCLUSIONS}|.openidea/|.openidea-src/|app/src/main/java/|app/src/test/java/|tools/rules/|Top.java"
+                    )
+                ),
+                (
+                    "app/src/main/java".to_owned(),
+                    format!("{BAZEL_FILE_EXCLUSIONS}|com/a/Visibility.java")
+                ),
+                (
+                    prefixed("tools/rules"),
+                    format!("{BAZEL_FILE_EXCLUSIONS}|com/t/x/Odd.java")
+                ),
+                (
+                    "app/src/test/java".to_owned(),
+                    format!("{BAZEL_FILE_EXCLUSIONS}|com/a/OddTest.java")
+                ),
+                (".openidea-src/main".to_owned(), String::new()),
+                (".openidea-src/test".to_owned(), String::new()),
+            ]
+        );
+        let links = links(&files.project);
+        for (name, location) in [
+            (
+                ".openidea-src/main/com/b/Visibility.java",
+                "/ws/app/src/main/java/com/a/Visibility.java",
+            ),
+            (
+                ".openidea-src/main/com/c/Odd.java",
+                "/ws/tools/rules/x/Odd.java",
+            ),
+            (".openidea-src/main/Top.java", "/ws/Top.java"),
+            (
+                ".openidea-src/test/com/b/OddTest.java",
+                "/ws/app/src/test/java/com/a/OddTest.java",
+            ),
+        ] {
+            assert!(
+                links.contains(&(name.to_owned(), location.to_owned())),
+                "{name} in {links:?}"
+            );
+        }
+        assert!(
+            files.classpath.contains(
+                "path=\".openidea-src/test\" output=\".openidea/bazel/eclipse-bin/test\">"
+            )
+        );
+        assert_eq!(
             files.warnings,
             [
-                "source root `tools/rules` has package prefix `com.allocadia.tools`, which Eclipse cannot express: left out"
+                "4 sources declare a package other than their directory's: linked at their package's path",
+                "1 sources declare the same package and file name as another one: left where they are",
             ]
         );
     }

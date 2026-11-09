@@ -166,6 +166,17 @@ pub struct SourceRoot {
     pub is_test: bool,
 }
 
+/// A source whose `package` is not the one of its directory (the majority of the directory's
+/// sources): Bazel compiles it as it is, the IDE must show it at its package's path.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MovedSource {
+    /// Workspace-relative file.
+    pub path: String,
+    /// Its declared package.
+    pub package: String,
+    pub is_test: bool,
+}
+
 /// A library jar of the generated project.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Library {
@@ -181,6 +192,7 @@ pub struct Library {
 pub struct JavaModel {
     pub workspace_root: String,
     pub source_roots: Vec<SourceRoot>,
+    pub moved_sources: Vec<MovedSource>,
     pub libraries: Vec<Library>,
     /// Workspace-relative directories hidden from the IDE (ImportRoots excludes and Bazel's symlinks).
     pub excludes: Vec<String>,

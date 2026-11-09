@@ -1,0 +1,20 @@
+# OpenIDEA platform requests
+
+What the Bazel plugin needs from OpenIDEA (0.1.39, plugin API 1.3) to match the Bazel plugin for IntelliJ, found while running it on a large Java workspace (Allocadia: 2,595 targets, 3,068 aspect info files, 8,042 Java sources) in two windows at once. Each item says what was measured and what was only read in the code.
+
+## Feature requests
+
+1. **Reload a language server from a plugin.** After a sync rewrites `.classpath`, the user must restart jdtls from the status bar; after the first sync (new `languageServers.jdtls` args in `.openidea/settings.toml`), the whole IDE, because project settings are read when a project opens. IntelliJ applies a sync without either. Wanted: `host::restart_language_server(project, "jdtls")`, or reloading `.openidea/settings.toml` when it changes on disk.
+2. **A project-opened event.** A window that opens with no editor reports its (empty) focused editor before plugins load (`bridge.ts` `trackActiveFile`), so a plugin learns of the project only when a file opens. Measured: a worktree window opened with no file never triggered the plugin until a file was opened.
+3. **Status items per window.** `set_status_item` is plugin-global (`plugins/api.rs` `status_items`), so a status about one worktree shows in every window, and its click runs the command for the focused window's project.
+4. **Continuing work in a later call.** Fuel (5·10⁹) is per host→plugin call and there is no way to schedule a continuation (`on-schedule` only fires while the plugin is inactive). A sync must fit in one call; IntelliJ shards it (`shard_sync`). Measured: a full Allocadia sync costs about 3.2·10⁹.
+5. **Batch file reads, and file times in `read_dir`.** A sync reads ~14k files one host call each; on Allocadia that part takes about 7 s in OpenIDEA against about 3.5 s of pure computation in a wasmtime bench of the same code (measured both; the per-call share is an estimate). IntelliJ skips unchanged aspect files by their file state. Wanted: `fs::read_many`, and `modified`/`size` in `DirEntry`.
+6. **`fs::remove` under the plugin's own data directory**, to clean up jdtls workspaces the plugin no longer uses.
+7. **Test results from other build tools.** The run panel builds its test tree from Surefire/Gradle reports only (`junit::report_dirs`, `frameworkFor`). Wanted: a run detector declaring its JUnit XML report globs (Bazel: `bazel-testlogs/**/test.xml`), or an API to publish test results.
+8. **Starting a debug session from a plugin**, e.g. attach to a JDWP port, so Debug Test/Target need no manual *Attach to Process*.
+
+## Bugs
+
+1. **jdtls can't read `compiler-defaults.prefs` when the data path has a space.** jdtls logs `Illegal character in path at index 38: /Users/…/Library/Application Support/ai.l0ng.openidea/lsp/jdtls/compiler-defaults.prefs` many times per second (measured, `.metadata/.log` of the workspace). The path is passed unencoded where a URI is expected.
+2. **Linked resources added to an imported project are not picked up.** With jdtls running, rewriting `.project` with new `<linkedResources>` (or touching it) didn't reach jdtls in OpenIDEA, and after a restart jdtls reported "missing required source folder". In a headless jdtls, a `workspace/didChangeWatchedFiles` for `.project` fixes it (measured). Hypothesis: `.project` changes aren't forwarded to jdtls; to check, log the `didChangeWatchedFiles` notifications sent after editing `.project`.
+3. **A checkout went unnoticed by one window.** Once, after `git checkout` in a worktree open in a second window, neither the branch indicator nor the file tree updated and no `files-changed` event came, even after several minutes; a later checkout was detected. Observed once, not reproduced.

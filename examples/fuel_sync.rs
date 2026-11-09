@@ -28,8 +28,10 @@ impl BenchHost {
         if path.starts_with(&self.scratch) {
             return std::fs::read(path).ok();
         }
-        match self.files.get(path) {
-            Some(v) => v.clone(),
+        // Handed over, not copied: the IDE writes a file's contents into the plugin's memory
+        // without spending its fuel. A sync reads each file once; a second read goes to WASI.
+        match self.files.remove(path) {
+            Some(v) => v,
             None => std::fs::read(path).ok(),
         }
     }
@@ -48,15 +50,21 @@ impl SyncHost for BenchHost {
         Ok(self.root.clone())
     }
     fn read_workspace(&mut self, path: &str) -> Result<Option<String>, String> {
-        let written = Path::new(&self.scratch).join(path);
-        if written.exists() {
-            return optional(std::fs::read(written))
-                .map(|o| o.map(|b| String::from_utf8_lossy(&b).into_owned()));
-        }
         let full = format!("{}/{path}", self.root);
+        // Preloaded workspace files were never written by the sync: no stat of the scratch copy,
+        // whose cost (WASI's, not the plugin's) would be counted with the sync's.
+        if !self.files.contains_key(&full) {
+            let written = Path::new(&self.scratch).join(path);
+            if written.exists() {
+                return optional(std::fs::read(written))
+                    .map(|o| o.map(|b| String::from_utf8_lossy(&b).into_owned()));
+            }
+        }
+        // The IDE decodes the file, and the plugin's bindings lift its text unchecked
+        // (wit-bindgen `string_lift` in release builds): no UTF-8 validation in the plugin.
         Ok(self
             .file(&full)
-            .map(|b| String::from_utf8_lossy(&b).into_owned()))
+            .map(|b| unsafe { String::from_utf8_unchecked(b) }))
     }
     fn write_workspace(&mut self, path: &str, text: &str) -> Result<(), String> {
         let full = Path::new(&self.scratch).join(path);

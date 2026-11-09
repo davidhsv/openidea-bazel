@@ -166,7 +166,7 @@ impl<'a> Tree<'a> {
 
 /// `pickMostFrequentlyOccurring`: the most voted prefix; a tie goes to the prefix the directory's
 /// layout implies, then (where Java's hash order decides) to the smallest prefix.
-fn most_frequent<'a>(votes: &[(&'a str, u32)], dir: &str) -> Option<&'a str> {
+pub(crate) fn most_frequent<'a>(votes: &[(&'a str, u32)], dir: &str) -> Option<&'a str> {
     let best = votes.iter().map(|&(_, n)| n).max()?;
     let mut tied = votes.iter().filter(|&&(_, n)| n == best).map(|&(p, _)| p);
     let first = tied.next()?;

@@ -19,7 +19,8 @@ pub fn parse_target_ide_info(text: &str) -> Result<TargetIdeInfo, String> {
     parse(text, true).map_err(|e| e.describe(text))
 }
 
-/// `fast`: scan `deps` blocks with [`fast_dependency`] (the reader alone is used to check it).
+/// `fast`: scan `deps` and `sources` blocks with [`fast_dependency`] and
+/// [`fast_artifact_location`] (the reader alone is used to check them).
 fn parse(text: &str, fast: bool) -> Result<TargetIdeInfo, Error> {
     let mut r = Reader::new(text);
     let mut info = TargetIdeInfo::default();
@@ -56,6 +57,7 @@ fn parse(text: &str, fast: bool) -> Result<TargetIdeInfo, Error> {
                     &mut r,
                     &f,
                     info.java_ide_info.get_or_insert_with(Default::default),
+                    fast,
                 )?;
             }
             "java_toolchain_ide_info" => java_toolchain_ide_info(
@@ -179,6 +181,53 @@ fn fast_dependency(text: &str, start: usize) -> Option<(Dependency, usize)> {
 }
 
 #[inline(always)]
+/// Whether `f` is a message the reader just opened with `{` (its scan ends at `}`).
+fn opened_with_brace(r: &Reader<'_>, f: &Field<'_>) -> bool {
+    f.is_message() && r.offset() > 0 && r.text().as_bytes()[r.offset() - 1] == b'{'
+}
+
+/// An `ArtifactLocation` body as the aspect writes it, from just after its `{`: its four fields,
+/// unescaped strings and `true`/`false`, in any order. `None` sends anything else to the reader.
+fn fast_artifact_location(text: &str, start: usize) -> Option<(ArtifactLocation, usize)> {
+    let b = text.as_bytes();
+    let mut loc = ArtifactLocation::default();
+    let mut i = start;
+    loop {
+        i = skip_ws(b, i);
+        let string = |i: usize, name: &[u8]| -> Option<(String, usize)> {
+            let from = i + name.len();
+            let to = closing_quote(b, from)?;
+            Some((text.get(from..to)?.to_owned(), to + 1))
+        };
+        let boolean = |i: usize, name: &[u8]| -> Option<(bool, usize)> {
+            let from = i + name.len();
+            let (value, to) = if has_literal(b, from, b"true") {
+                (true, from + 4)
+            } else if has_literal(b, from, b"false") {
+                (false, from + 5)
+            } else {
+                return None;
+            };
+            (!b.get(to)
+                .is_some_and(|&c| c.is_ascii_alphanumeric() || c == b'_'))
+            .then_some((value, to))
+        };
+        if has_literal(b, i, b"relative_path: \"") {
+            (loc.relative_path, i) = string(i, b"relative_path: \"")?;
+        } else if has_literal(b, i, b"root_execution_path_fragment: \"") {
+            (loc.root_execution_path_fragment, i) = string(i, b"root_execution_path_fragment: \"")?;
+        } else if has_literal(b, i, b"is_source: ") {
+            (loc.is_source, i) = boolean(i, b"is_source: ")?;
+        } else if has_literal(b, i, b"is_external: ") {
+            (loc.is_external, i) = boolean(i, b"is_external: ")?;
+        } else if b.get(i) == Some(&b'}') {
+            return Some((loc, i + 1));
+        } else {
+            return None;
+        }
+    }
+}
+
 fn skip_ws(b: &[u8], mut i: usize) -> usize {
     while i < b.len() && matches!(b[i], b' ' | b'\n' | b'\t' | b'\r') {
         i += 1;
@@ -305,13 +354,24 @@ fn java_ide_info<'a>(
     r: &mut Reader<'a>,
     f: &Field<'a>,
     java: &mut JavaIdeInfo,
+    fast: bool,
 ) -> Result<(), Error> {
     f.expect_message()?;
     while let Some(f) = r.next_field()? {
         match f.name {
             "jars" => java.jars.push(library_artifact(r, &f)?),
             "generated_jars" => java.generated_jars.push(library_artifact(r, &f)?),
-            "sources" => java.sources.push(new_artifact_location(r, &f)?),
+            // A large target lists thousands of sources: most of the text the sync parses.
+            "sources" => match (fast && opened_with_brace(r, &f))
+                .then(|| fast_artifact_location(r.text(), r.offset()))
+                .flatten()
+            {
+                Some((loc, end)) => {
+                    r.close_message_at(end);
+                    java.sources.push(loc);
+                }
+                None => java.sources.push(new_artifact_location(r, &f)?),
+            },
             "package_manifest" => {
                 artifact_location(
                     r,
@@ -982,6 +1042,30 @@ deps { dependency_type: 1 }
             );
         }
         eprintln!("{} files: fast path matches the reader", files.len());
+    }
+
+    #[test]
+    fn fast_sources_match_the_reader_and_fall_back_on_unusual_blocks() {
+        let usual = "key {\n  label: \"//k:k\"\n}\njava_ide_info {\n  sources {\n    is_external: false\n    is_source: true\n    relative_path: \"a/A.java\"\n    root_execution_path_fragment: \"\"\n  }\n  sources {\n    relative_path: \"b/B.java\"\n  }\n}\n";
+        let escaped = usual.replace("a/A.java", "a/\\\"A.java");
+        let other_bool = usual.replace("is_source: true", "is_source: True");
+        let extra = usual.replace("    is_source:", "    extra: 1\n    is_source:");
+        let angle = usual.replace(
+            "sources {\n    relative_path: \"b/B.java\"\n  }",
+            "sources <\n    relative_path: \"b/B.java\"\n  >",
+        );
+        let truthy = usual.replace("is_source: true", "is_source: trueish");
+        for text in [usual.to_string(), escaped, other_bool, extra, angle] {
+            assert_eq!(parse(&text, true), parse(&text, false), "{text}");
+        }
+        assert!(
+            parse(&truthy, true).is_err(),
+            "not a bool: the reader reports it"
+        );
+        let sources = parse(usual, true).unwrap().java_ide_info.unwrap().sources;
+        assert_eq!(sources[0].relative_path, "a/A.java");
+        assert!(sources[0].is_source && !sources[0].is_external);
+        assert_eq!(sources[1].relative_path, "b/B.java");
     }
 
     #[test]

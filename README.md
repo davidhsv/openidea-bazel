@@ -15,14 +15,25 @@ An [OpenIDEA](https://github.com/l0ng-ai/openidea) plugin that opens Java Bazel 
 
 Libraries are the jars Bazel built (class jars, so Run and Debug work), each with its source jar attached. Lombok is handled by OpenIDEA's own Lombok agent.
 
+Like IntelliJ, the sync reads every source's `package` and gives each directory its sources' most common one. Two things IntelliJ expresses that an Eclipse project cannot are written as linked resources under the virtual folder `.openidea-src`: a source root with a package prefix (Allocadia's `tools/rules`, `com.allocadia.tools`) is linked at the prefix's path, and a source whose `package` differs from its directory's is linked at its package's path. IntelliJ flags such a source as misplaced; here it resolves.
+
+The sync log (**Bazel: Show Last Sync Log**) ends with the time of each step: `timing: bazel info … · query … · build … · info files … · model … · project files …`.
+
 Like IntelliJ's startup sync, a Bazel workspace that was never synced syncs by itself when it opens (setting **Sync a Bazel workspace that was never synced when it opens**, on by default); one that was synced just loads its project.
 
-After the **first** sync, restart OpenIDEA (Find Action › *Restart IDE*), since the IDE reads `.openidea/settings.toml` when a project opens. After later syncs, restart the Java language server from the language servers popup in the status bar. jdtls reads `.classpath` when it starts.
+After the **first** sync, restart OpenIDEA (Find Action › *Restart IDE*), since the IDE reads `.openidea/settings.toml` when a project opens. After later syncs, restart the Java language server from the language servers popup in the status bar. jdtls reads `.classpath` when it starts. jdtls creates linked resources only when it imports a project, so a sync that changes the set of linked sources gives the workspace a new jdtls data directory, and the sync's notification asks for an OpenIDEA restart again.
 
 Other features:
 - **Starlark** (`BUILD`, `BUILD.bazel`, `*.bzl`, `WORKSPACE`, `MODULE.bazel`), **project view** and **bazelrc** languages.
 - **Run configurations** `bazel build //...` and `bazel test //...`.
-- A status bar item that says when BUILD files changed since the last sync.
+- A status bar item that says which workspaces' BUILD files changed since their last sync (an edit, a checkout or a branch switch, also one made while the IDE was closed); clicking it syncs those workspaces, whichever window it is clicked in.
+- **Bazel: Test File** and **Bazel: Debug Test File** (editor context menu › Bazel) run the focused test class's target with `bazel test`; the debug variant adds `--java_debug`, so *Run › Attach to Process* attaches to the test JVM on port 5005.
+- **Bazel: Run Target…** and **Bazel: Debug Target…** (Tools menu) `bazel run` a binary of the synced directories in a log tab: type a label or part of one (it starts as the last target run in the workspace). Debug lists `java_binary` targets and passes their launcher `--debug`: the JVM waits on port 5005 for *Attach to Process*. The binaries start with the project's `runEnvironment` setting (`NAME=value` entries), as a run configuration's environment, e.g. in `.openidea/settings.toml`:
+
+  ```toml
+  [plugins."davidhsv.bazel"]
+  runEnvironment = ["ALLOCADIA_ENV=local", "BACKEND_PORT=8888"]
+  ```
 
 ## Install
 
@@ -54,11 +65,14 @@ cargo run --release --example sync_cli -- /path/to/workspace   # the whole sync 
 
 ## Limitations
 
-- Source folders with a package prefix (a folder whose files' package doesn't follow its path) can't be expressed in `.classpath` and are left out with a warning.
-- The whole sync runs in one plugin call, so a much larger workspace than the one above can exceed the CPU budget. Sharding, as IntelliJ's `shard_sync` does, would be the next step.
+- The whole sync runs in one plugin call, so a much larger workspace than the one above can exceed the CPU budget: OpenIDEA has no way for a plugin to continue work in a later call, which sharding (IntelliJ's `shard_sync`) needs.
+- After the build, a sync reads every info file and source through the IDE, one call each: on Allocadia that takes about 7 s (measured 2026-11-08). IntelliJ's own log of an Allocadia sync (2026-10-13, another commit) shows about 4 s for the same step, which it runs multi-threaded. The plugin API has no batch read and no file times in directory listings, which a faster incremental sync needs.
+- No test tree: OpenIDEA builds it from Maven and Gradle reports only, and plugins cannot start run sessions. Tests run in a log tab, and debugging attaches by hand (*Attach to Process*).
+- jdtls data directories of replaced link sets stay in the plugin's data directory (`…/plugins/.data/davidhsv.bazel/files/jdtls/<hash>`); plugins have no delete. Any of them except the one in `.openidea/settings.toml` can be removed while OpenIDEA is closed.
 - The aspect ships without IntelliJ's tool jars (PackageParser, JarFilter, CreateAar). Packages are read from the sources instead, and a target that mixes hand-written and generated sources contributes its whole jar.
 - Only Java is synced (no Kotlin, Scala, Python, C++, Go or Android).
-- The plugin runs as one instance in OpenIDEA, so syncs of several windows (worktrees) run one after another.
+- The plugin runs as one instance in OpenIDEA, so syncs of several windows (worktrees) run one after another. Each worktree keeps its own Bazel output base, jdtls data directory and scratch files, so worktrees never share state.
+- A window that opens with no editor is synced when its first file opens: OpenIDEA reports a window's first (empty) focused editor before plugins load.
 
 ## License
 

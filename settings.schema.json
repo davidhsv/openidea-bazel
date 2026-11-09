@@ -4,6 +4,14 @@
       "type": "boolean",
       "title": "Sync a Bazel workspace that was never synced when it opens",
       "default": true
+    },
+    "runEnvironment": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "title": "Environment of Bazel: Run Target and Debug Target (NAME=value each), like a run configuration's",
+      "default": []
     }
   }
 }

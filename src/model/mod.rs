@@ -22,10 +22,11 @@ use glob::GlobSet;
 use libs::LibraryInputs;
 use package::package_prefix_of;
 use paths::{PathDecoder, is_under, parent};
-use roots::{DirPackage, content_root_folders};
+use roots::{DirPackage, content_root_folders, most_frequent};
 
 use crate::types::{
-    BazelInfo, ImportRoots, JavaModel, ProjectView, SourceRoot, TargetIdeInfo, TargetMap,
+    BazelInfo, ImportRoots, JavaModel, MovedSource, ProjectView, SourceRoot, TargetIdeInfo,
+    TargetMap,
 };
 
 /// `JavaLanguageLevelHelper.getDefaultLanguageLevel`.
@@ -44,7 +45,7 @@ pub trait SyncFiles {
 /// The project jdtls imports: source folders from the project's source targets, libraries from
 /// the jars they use, and the language level.
 ///
-/// Reads one `.java` file per source directory, every source target's jdeps file, and checks the
+/// Reads every `.java` source of the project, every source target's jdeps file, and checks the
 /// existence of each library's preferred jar.
 pub fn build_java_model(
     targets: &TargetMap,
@@ -78,6 +79,7 @@ pub fn build_java_model(
     JavaModel {
         workspace_root: workspace_root.to_owned(),
         source_roots: layout.roots,
+        moved_sources: layout.moved,
         libraries,
         excludes: roots.excludes.clone(),
         language_level,
@@ -85,18 +87,16 @@ pub fn build_java_model(
     }
 }
 
-/// The source folders and which one holds each source directory.
+/// The source folders, which one holds each source directory, and the sources whose package
+/// differs from their directory's.
 struct SourceLayout<'a> {
     roots: Vec<SourceRoot>,
     folder_of_dir: FxHashMap<&'a str, usize>,
+    moved: Vec<MovedSource>,
 }
 
-/// `SourceDirectoryCalculator.calculateContentEntries` with `SourceTestConfig` per folder.
-///
-/// IntelliJ reads the package of every source file and votes per directory. Reading them all is
-/// most of a sync's file IO (Allocadia averages about eight sources per directory), so each
-/// directory takes the package of its first `.java` file in path order; a directory whose files
-/// disagree gets that file's package instead of the majority's.
+/// `SourceDirectoryCalculator.calculateContentEntries` with `SourceTestConfig` per folder: the
+/// package of every source is read, and each directory takes its sources' most common package.
 fn source_layout<'a>(
     classified: &Classified<'a>,
     import: &ImportRoots,
@@ -104,38 +104,46 @@ fn source_layout<'a>(
     files: &mut dyn SyncFiles,
     warnings: &mut Vec<String>,
 ) -> SourceLayout<'a> {
-    let mut first_file: BTreeMap<&'a str, &'a str> = BTreeMap::new();
+    let mut sources_of_dir: BTreeMap<&'a str, Vec<&'a str>> = BTreeMap::new();
     for target in &classified.source_targets {
         for source in java_sources(target).filter(|s| s.is_main_repo_source()) {
             let path = source.relative_path.as_str();
-            first_file
-                .entry(parent(path))
-                .and_modify(|first| *first = (*first).min(path))
-                .or_insert(path);
+            sources_of_dir.entry(parent(path)).or_default().push(path);
         }
     }
 
     // `sortArtifactLocationsByRootDirectory`: excluded directories are dropped, the rest go to
     // the first content root holding them.
-    let mut by_content_root: Vec<Vec<(&'a str, &'a str)>> = vec![Vec::new(); import.includes.len()];
-    for (&dir, &file) in &first_file {
+    let mut by_content_root: Vec<Vec<(&'a str, Vec<&'a str>)>> =
+        vec![Vec::new(); import.includes.len()];
+    for (dir, mut sources) in sources_of_dir {
         if import.excludes.iter().any(|e| is_under(e, dir)) {
             continue;
         }
         if let Some(i) = import.includes.iter().position(|root| is_under(root, dir)) {
-            by_content_root[i].push((dir, file));
+            sources.sort_unstable();
+            sources.dedup();
+            by_content_root[i].push((dir, sources));
         }
     }
 
     let mut roots = Vec::new();
+    let mut moved: Vec<(&'a str, String)> = Vec::new();
     for (content_root, dirs) in import.includes.iter().zip(&by_content_root) {
-        let packages: Vec<DirPackage> = dirs
-            .iter()
-            .map(|&(dir, file)| DirPackage {
-                dir,
-                package: directory_package(dir, file, files, warnings),
-            })
-            .collect();
+        let mut packages: Vec<DirPackage> = Vec::with_capacity(dirs.len());
+        for (dir, sources) in dirs {
+            let declared: Vec<(&'a str, Option<String>)> = sources
+                .iter()
+                .map(|&file| (file, source_package(file, files, warnings)))
+                .collect();
+            let package = directory_package(dir, &declared);
+            moved.extend(
+                declared
+                    .into_iter()
+                    .filter_map(|(file, p)| p.filter(|p| *p != package).map(|p| (file, p))),
+            );
+            packages.push(DirPackage { dir, package });
+        }
         for (path, package_prefix) in content_root_folders(content_root, &packages) {
             let is_test = test_sources.matches(path);
             roots.push(SourceRoot {
@@ -173,9 +181,21 @@ fn source_layout<'a>(
             ));
         }
     }
+    let moved = moved
+        .into_iter()
+        .filter_map(|(path, package)| {
+            let &folder = folder_of_dir.get(parent(path))?;
+            Some(MovedSource {
+                path: path.to_owned(),
+                package,
+                is_test: roots[folder].is_test,
+            })
+        })
+        .collect();
     SourceLayout {
         roots,
         folder_of_dir,
+        moved,
     }
 }
 
@@ -193,30 +213,45 @@ fn enclosing_folder(index: &FxHashMap<&str, usize>, dir: &str) -> Option<usize> 
     }
 }
 
-/// The package of a directory, from its first source (`JavaSourcePackageReader`), else from its
-/// path (`FilePathJavaPackageReader`).
-fn directory_package(
-    dir: &str,
+/// The package a source declares (`JavaSourcePackageReader`); `None` when it declares none or
+/// can't be read, and the directory's path stands in for it (`FilePathJavaPackageReader`).
+fn source_package(
     file: &str,
     files: &mut dyn SyncFiles,
     warnings: &mut Vec<String>,
-) -> String {
+) -> Option<String> {
     match files.read_workspace_file(file) {
         Some(text) => {
-            if let Some(package) = declared_package(&text) {
-                return package.to_owned();
-            }
-            if !file.ends_with("module-info.java") {
+            let package = declared_package(&text).map(str::to_owned);
+            if package.is_none() && !file.ends_with("module-info.java") {
                 warnings.push(format!(
                     "no package declaration found in {file}; using the package its path implies"
                 ));
             }
+            package
         }
-        None => warnings.push(format!(
-            "cannot read {file}; using the package its path implies"
-        )),
+        None => {
+            warnings.push(format!(
+                "cannot read {file}; using the package its path implies"
+            ));
+            None
+        }
     }
-    package_prefix_of(dir)
+}
+
+/// A directory's package: the one all its sources declare, else the most common one
+/// (`pickMostFrequentlyOccurring`, ties to the package its path implies).
+fn directory_package(dir: &str, declared: &[(&str, Option<String>)]) -> String {
+    let layout = package_prefix_of(dir);
+    let mut votes: Vec<(&str, u32)> = Vec::new();
+    for (_, package) in declared {
+        let package = package.as_deref().unwrap_or(&layout);
+        match votes.iter_mut().find(|(p, _)| *p == package) {
+            Some((_, n)) => *n += 1,
+            None => votes.push((package, 1)),
+        }
+    }
+    most_frequent(&votes, dir).map_or_else(|| layout.clone(), str::to_owned)
 }
 
 /// Whether a source target builds only test code: all its sources in the project are in test

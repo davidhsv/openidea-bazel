@@ -2,7 +2,7 @@
 //! (project view → `bazel info` → aspect files → target derivation → aspect build → target map →
 //! Java model), ending in an Eclipse project and the jdtls settings instead of an IntelliJ module.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 use crate::fxhash::{FxHashSet, key_fingerprint};
 
@@ -18,6 +18,8 @@ use crate::{aspect, types::JavaModel};
 
 /// The plugin's own directory in the workspace (IntelliJ's `.ijwb`).
 pub const DATA_DIR: &str = ".openidea/bazel";
+pub const QUERY_FILE: &str = ".openidea/bazel/query.txt";
+const TARGETS_FILE: &str = ".openidea/bazel/targets.txt";
 pub const PROJECT_VIEW: &str = ".bazelproject";
 pub const SYNC_LOG: &str = ".openidea/bazel/last-sync.txt";
 /// Which targets build each source file (IntelliJ's `SourceToTargetMap`), for running and
@@ -115,6 +117,7 @@ pub fn sync(host: &mut dyn SyncHost) -> Result<SyncSummary, SyncError> {
 fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, SyncError> {
     let root = host.workspace_root()?;
     let mut summary = SyncSummary::default();
+    let mut timing = Timing::new();
 
     host.report("Reading the project view");
     let view = read_project_view(host)?;
@@ -141,6 +144,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     if run.exit_code != 0 {
         return Err(failure("bazel info", &run));
     }
+    timing.mark("bazel info");
     let info = query::parse_bazel_info(&run.stdout);
     if info.execution_root.is_empty() || info.bazel_bin.is_empty() {
         return Err(SyncError::Failed(format!(
@@ -160,7 +164,8 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     }
 
     let private = host.private_dir()?;
-    let targets = derive_targets(host, &view, &roots, &private)?;
+    let targets = derive_targets(host, &view, &roots, &root)?;
+    timing.mark("query");
     if targets.is_empty() {
         return Err(SyncError::Failed(
             "no targets to sync: check `directories:` and `targets:` in .bazelproject".into(),
@@ -169,10 +174,12 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     summary.targets = targets.len();
     log.push(format!("{} targets to sync", targets.len()));
 
-    let target_file = join(&private, "targets.txt");
-    host.write_private(&target_file, &(targets.join("\n") + "\n"))?;
+    // Bazel's scratch files live in the workspace, so syncs of different worktrees never share them.
+    host.write_workspace(TARGETS_FILE, &(targets.join("\n") + "\n"))?;
+    let target_file = join(&root, TARGETS_FILE);
     let build_args = query::sync_build_args(&view, &info, &aspect::aspect_flag(), &target_file);
     let run = host.run_bazel(&build_args, "Building with the IntelliJ aspect")?;
+    timing.mark("build");
     summary.build_exit_code = run.exit_code;
     if !BUILD_OK.contains(&run.exit_code) {
         return Err(failure("the aspect build", &run));
@@ -194,6 +201,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     let target_map = read_target_map(host, &info, &labels, log)?;
     summary.info_files = target_map.len();
     write_if_changed(host, TARGET_INDEX, &target_index(&target_map))?;
+    timing.mark("info files");
     check_cancel(host)?;
 
     host.report("Computing the Java project");
@@ -208,16 +216,64 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     for w in &model.warnings {
         log.push(format!("model: {w}"));
     }
+    timing.mark("model");
     summary.source_roots = model.source_roots.len();
     summary.libraries = model.libraries.len();
     summary.warnings.extend(model.warnings.iter().cloned());
 
     host.report("Writing the Eclipse project");
-    summary.project_changed =
+    let (project_changed, links_key) =
         write_eclipse(host, &model, &workspace_name, log, &mut summary.warnings)?;
-    let data_dir = jdtls_data_dir(&private, &root);
+    summary.project_changed = project_changed;
+    let data_dir = jdtls_data_dir(&private, &root, &links_key);
     summary.settings_changed = write_settings(host, &data_dir, log)?;
+    timing.mark("project files");
+    log.push(timing.line());
     Ok(summary)
+}
+
+/// Wall-clock time of each step of a sync, for its log (IntelliJ's sync log reports them too).
+struct Timing {
+    last: std::time::Instant,
+    steps: Vec<(&'static str, std::time::Duration)>,
+}
+
+impl Timing {
+    fn new() -> Self {
+        Timing {
+            last: std::time::Instant::now(),
+            steps: Vec::new(),
+        }
+    }
+
+    /// Ends `step` now.
+    fn mark(&mut self, step: &'static str) {
+        let now = std::time::Instant::now();
+        self.steps.push((step, now - self.last));
+        self.last = now;
+    }
+
+    fn line(&self) -> String {
+        let steps: Vec<String> = self
+            .steps
+            .iter()
+            .map(|(step, d)| format!("{step} {}", format_duration(*d)))
+            .collect();
+        format!("timing: {}", steps.join(" · "))
+    }
+}
+
+/// `0.4 s`, `12 s`, `8 min 15 s`.
+fn format_duration(d: std::time::Duration) -> String {
+    let secs = d.as_secs_f64();
+    if secs < 10.0 {
+        format!("{secs:.1} s")
+    } else if secs < 60.0 {
+        format!("{} s", secs.round() as u64)
+    } else {
+        let whole = secs.round() as u64;
+        format!("{} min {} s", whole / 60, whole % 60)
+    }
 }
 
 fn read_project_view(host: &mut dyn SyncHost) -> Result<ProjectView, SyncError> {
@@ -243,12 +299,12 @@ fn derive_targets(
     host: &mut dyn SyncHost,
     view: &ProjectView,
     roots: &crate::types::ImportRoots,
-    private: &str,
+    root: &str,
 ) -> Result<Vec<String>, SyncError> {
     let mut derived = Vec::new();
     let query_expr = query::derive_targets_query(roots, view.allow_manual_targets_sync);
     if view.derive_targets_from_directories && !query_expr.is_empty() {
-        let output = join(private, "query.txt");
+        let output = join(root, QUERY_FILE);
         let mut args = vec!["query".to_string()];
         args.extend(view.build_flags.iter().cloned());
         args.extend(
@@ -265,7 +321,7 @@ fn derive_targets(
         if !BUILD_OK.contains(&run.exit_code) {
             return Err(failure("bazel query", &run));
         }
-        let text = host.read_text(&output)?.unwrap_or_default();
+        let text = host.read_workspace(QUERY_FILE)?.unwrap_or_default();
         derived = query::parse_label_kind(&text);
     }
     Ok(query::sync_targets(&derived, view))
@@ -300,12 +356,15 @@ fn read_target_map(
             host.report(&format!("Reading target info ({} read)", map.len()));
         }
         let path = ideinfo::info_file_path(&info.bazel_bin, &key);
-        let Some(text) = host.read_text(&path)? else {
+        // Raw bytes: the aspect writes ASCII, which needs none of the host's text decoding.
+        let Some(bytes) = host.read_bytes(&path)? else {
             if depth == 0 {
                 missing_top_level += 1;
             }
             continue;
         };
+        let text = String::from_utf8(bytes)
+            .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
         // A file Bazel (or IntelliJ, which shares the output base) is rewriting reads truncated:
         // skip the target rather than the sync.
         let target = match ideinfo::parse_target_ide_info(&text) {
@@ -338,16 +397,26 @@ fn write_eclipse(
     name: &str,
     log: &mut Vec<String>,
     warnings: &mut Vec<String>,
-) -> Result<bool, SyncError> {
+) -> Result<(bool, String), SyncError> {
     let files = eclipse::emit(model, name);
     for w in &files.warnings {
         log.push(format!("eclipse: {w}"));
         warnings.push(w.clone());
     }
     // jdtls adds its own resource filter to `.project` after importing it; that alone is no change.
+    // The new file keeps that filter: a running jdtls that finds it missing writes `.project` back
+    // from its own description, links of the previous sync included (measured with jdtls 1.63).
     let existing = host.read_workspace(".project")?;
     if existing.as_deref().map(strip_jdtls_filters) != Some(files.project.clone()) {
-        host.write_workspace(".project", &files.project)
+        let project = match existing.as_deref().map(jdtls_filters) {
+            Some(kept) if !kept.is_empty() => files.project.replacen(
+                "\t</filteredResources>",
+                &format!("{kept}\t</filteredResources>"),
+                1,
+            ),
+            _ => files.project,
+        };
+        host.write_workspace(".project", &project)
             .map_err(|e| format!("writing .project: {e}"))?;
     }
     // What jdtls must reload: the classpath and the compiler settings (the filters only hide folders).
@@ -357,7 +426,7 @@ fn write_eclipse(
         ".settings/org.eclipse.jdt.core.prefs",
         &files.jdt_core_prefs,
     )?;
-    Ok(changed)
+    Ok((changed, files.links_key))
 }
 
 fn write_settings(
@@ -397,21 +466,30 @@ fn write_settings(
 /// `.project` without the `<filter>` jdtls adds (its arguments end in
 /// `__CREATED_BY_JAVA_LANGUAGE_SERVER__`), and without `<filteredResources>` if that leaves it empty.
 fn strip_jdtls_filters(project: &str) -> String {
-    const MARK: &str = "__CREATED_BY_JAVA_LANGUAGE_SERVER__";
     let mut out = project.to_string();
-    while let Some(mark) = out.find(MARK) {
-        let (Some(start), Some(end)) =
-            (out[..mark].rfind("<filter>"), out[mark..].find("</filter>"))
-        else {
-            break;
+    loop {
+        let Some(range) = jdtls_filter_ranges(&out).next() else {
+            return out;
         };
-        let end = mark + end + "</filter>".len();
-        // The filter's own line, indentation and line break included.
-        let start = out[..start].rfind('\n').map_or(start, |i| i + 1);
-        let end = out[end..].find('\n').map_or(end, |i| end + i + 1);
-        out.replace_range(start..end, "");
+        out.replace_range(range, "");
     }
-    out
+}
+
+/// The resource filters jdtls added to `.project`, as they are written there.
+fn jdtls_filters(project: &str) -> String {
+    jdtls_filter_ranges(project).map(|r| &project[r]).collect()
+}
+
+/// Where each filter jdtls added is, its own lines (indentation and line break) included.
+fn jdtls_filter_ranges(project: &str) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+    const MARK: &str = "__CREATED_BY_JAVA_LANGUAGE_SERVER__";
+    project.match_indices(MARK).filter_map(|(mark, _)| {
+        let start = project[..mark].rfind("<filter>")?;
+        let end = mark + project[mark..].find("</filter>")? + "</filter>".len();
+        let start = project[..start].rfind('\n').map_or(start, |i| i + 1);
+        let end = project[end..].find('\n').map_or(end, |i| end + i + 1);
+        Some(start..end)
+    })
 }
 
 fn write_if_changed(host: &mut dyn SyncHost, path: &str, text: &str) -> Result<bool, SyncError> {
@@ -479,6 +557,38 @@ pub fn test_targets_of<'a>(index: &'a str, path: &str, class: Option<&str>) -> V
     labels
 }
 
+/// The targets `bazel run` can start, from the sync's query result (`<kind> rule <label>` lines),
+/// sorted by label: rules whose kind ends in `_binary`, except Starlark-private ones
+/// (`_run_binary` is a build action). `java_only` keeps `java_binary`, whose launcher takes
+/// `--debug`.
+pub fn runnable_targets(query: &str, java_only: bool) -> Vec<(&str, &str)> {
+    let mut targets: Vec<(&str, &str)> = query
+        .lines()
+        .filter_map(|line| {
+            let (kind, rest) = line.split_once(' ')?;
+            let label = rest.strip_prefix("rule ")?.trim();
+            let runnable = if java_only {
+                kind == "java_binary"
+            } else {
+                kind.ends_with("_binary") && !kind.starts_with('_')
+            };
+            runnable.then_some((label, kind))
+        })
+        .collect();
+    targets.sort_unstable();
+    targets.dedup();
+    targets
+}
+
+/// The workspace packages whose targets the index lists, as BUILD-file directories ("" is the root).
+pub fn indexed_packages(index: &str) -> BTreeSet<&str> {
+    index
+        .lines()
+        .filter_map(|l| l.split('\t').nth(1)?.strip_prefix("//")?.split_once(':'))
+        .map(|(package, _)| package)
+        .collect()
+}
+
 /// A target pattern file line naming one target (not `-//x`, `//x/...` or `//x:all`).
 fn is_single_label(pattern: &str) -> bool {
     let p = pattern.trim();
@@ -503,11 +613,17 @@ fn join(dir: &str, name: &str) -> String {
     format!("{}/{name}", dir.trim_end_matches('/'))
 }
 
-/// The workspace's jdtls data directory: one per workspace, stable across syncs (jdtls rereads the
-/// Eclipse project when it starts) whatever form the host gives the root in.
-fn jdtls_data_dir(private: &str, root: &str) -> String {
+/// The workspace's jdtls data directory: one per workspace and set of linked resources, stable
+/// across syncs that keep them (jdtls rereads the classpath when it starts, but creates linked
+/// resources only when it imports the project), whatever form the host gives the root in.
+fn jdtls_data_dir(private: &str, root: &str, links_key: &str) -> String {
     let root = root.trim_end_matches('/');
-    join(private, &format!("jdtls/{:016x}", fnv1a(root.as_bytes())))
+    let key = if links_key.is_empty() {
+        fnv1a(root.as_bytes())
+    } else {
+        fnv1a(format!("{root}\n{links_key}").as_bytes())
+    };
+    join(private, &format!("jdtls/{key:016x}"))
 }
 
 /// A stable name for the workspace's jdtls data directory.
@@ -732,8 +848,8 @@ java_ide_info {
                         .iter()
                         .find_map(|a| a.strip_prefix("--output_file="))
                         .expect("--output_file");
-                    self.outside
-                        .insert(out.into(), self.query_output.as_bytes().to_vec());
+                    let out = out.strip_prefix("/ws/demo/").expect("in the workspace");
+                    self.workspace.insert(out.into(), self.query_output.clone());
                     Ok(BazelRun::default())
                 }
                 _ => Ok(BazelRun {
@@ -750,6 +866,48 @@ java_ide_info {
     }
 
     #[test]
+    fn durations_read_like_a_sync_log() {
+        use std::time::Duration;
+        assert_eq!(format_duration(Duration::from_millis(400)), "0.4 s");
+        assert_eq!(format_duration(Duration::from_millis(12_400)), "12 s");
+        assert_eq!(format_duration(Duration::from_secs(495)), "8 min 15 s");
+    }
+
+    #[test]
+    fn runnable_targets_are_public_binaries() {
+        let query = "java_binary rule //app:run\n\
+                     _run_binary rule //gen:x\n\
+                     sh_binary rule //tools:fmt\n\
+                     java_library rule //app:lib\n\
+                     alias rule //app:app\n\
+                     java_binary rule //a:main\n";
+        assert_eq!(
+            runnable_targets(query, false),
+            [
+                ("//a:main", "java_binary"),
+                ("//app:run", "java_binary"),
+                ("//tools:fmt", "sh_binary")
+            ]
+        );
+        assert_eq!(
+            runnable_targets(query, true),
+            [("//a:main", "java_binary"), ("//app:run", "java_binary")]
+        );
+    }
+
+    #[test]
+    fn indexed_packages_are_the_workspace_packages_of_the_index() {
+        let index = "app/A.java\t//app:lib\tjava_library\n\
+                     class:x.ATest\t//app/test:ATest\tjava_test\n\
+                     MODULE.bazel\t//:root\tfilegroup\n\
+                     x\t@maven//:guava\tjava_import\n";
+        assert_eq!(
+            indexed_packages(index).into_iter().collect::<Vec<_>>(),
+            ["", "app", "app/test"]
+        );
+    }
+
+    #[test]
     fn syncs_a_workspace_into_an_eclipse_project_for_jdtls() {
         let mut fake = Fake::new();
         let s = sync(&mut fake).unwrap();
@@ -761,8 +919,12 @@ java_ide_info {
 
         let build = fake.ran("build").unwrap();
         assert!(build.contains(&"--aspects=//.openidea/bazel/aspects:intellij_info_bundled.bzl%intellij_info_aspect".to_string()));
-        assert!(build.contains(&"--target_pattern_file=/private/targets.txt".to_string()));
-        assert_eq!(fake.outside["/private/targets.txt"], b"//app:lib\n");
+        assert!(
+            build.contains(
+                &"--target_pattern_file=/ws/demo/.openidea/bazel/targets.txt".to_string()
+            )
+        );
+        assert_eq!(fake.workspace[TARGETS_FILE], "//app:lib\n");
 
         let classpath = &fake.workspace[".classpath"];
         assert!(
@@ -808,6 +970,35 @@ java_ide_info {
         assert_eq!(
             fake.workspace[".project"], with_jdtls_filter,
             "jdtls' own filter is kept"
+        );
+    }
+
+    #[test]
+    fn a_changed_project_keeps_the_filter_jdtls_added() {
+        let mut fake = Fake::new();
+        sync(&mut fake).unwrap();
+        let filter = "\t\t<filter>\n\t\t\t<id>1794168683519</id>\n\t\t\t<arguments>node_modules|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>\n\t\t</filter>\n";
+        let with_jdtls_filter = fake.workspace[".project"].replace(
+            "\t</filteredResources>",
+            &format!("{filter}\t</filteredResources>"),
+        );
+        fake.workspace.insert(".project".into(), with_jdtls_filter);
+        // An excluded directory changes the project's own filters.
+        fake.workspace.insert(
+            PROJECT_VIEW.into(),
+            "directories:\n  .\n  -app/gen\n\nderive_targets_from_directories: true\njava_language_level: 17\n"
+                .into(),
+        );
+
+        sync(&mut fake).unwrap();
+        let project = &fake.workspace[".project"];
+        assert!(project.contains("^gen$"), "{project}");
+        assert!(project.contains(filter), "{project}");
+        assert_eq!(
+            project
+                .matches("__CREATED_BY_JAVA_LANGUAGE_SERVER__")
+                .count(),
+            1
         );
     }
 
@@ -895,12 +1086,31 @@ java_ide_info {
     #[test]
     fn the_jdtls_data_dir_does_not_depend_on_a_trailing_slash() {
         assert_eq!(
-            jdtls_data_dir("/p", "/ws/demo"),
-            jdtls_data_dir("/p/", "/ws/demo/")
+            jdtls_data_dir("/p", "/ws/demo", ""),
+            jdtls_data_dir("/p/", "/ws/demo/", "")
         );
         assert_ne!(
-            jdtls_data_dir("/p", "/ws/demo"),
-            jdtls_data_dir("/p", "/ws/other")
+            jdtls_data_dir("/p", "/ws/demo", ""),
+            jdtls_data_dir("/p", "/ws/other", "")
+        );
+    }
+
+    #[test]
+    fn a_new_set_of_linked_sources_gets_a_new_jdtls_workspace() {
+        let plain = jdtls_data_dir("/p", "/ws/demo", "");
+        let linked = jdtls_data_dir("/p", "/ws/demo", ".openidea-src\n.openidea-src/main/A.java");
+        assert_ne!(plain, linked);
+        assert_eq!(
+            linked,
+            jdtls_data_dir(
+                "/p",
+                "/ws/demo/",
+                ".openidea-src\n.openidea-src/main/A.java"
+            )
+        );
+        assert_ne!(
+            linked,
+            jdtls_data_dir("/p", "/ws/demo", ".openidea-src\n.openidea-src/main/B.java")
         );
     }
 

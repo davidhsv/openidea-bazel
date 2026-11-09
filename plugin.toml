@@ -16,11 +16,17 @@ activation = ["on-command:*", "on-startup-finished", "on-event:files-changed", "
 required = ["project.read", "project.write"]
 # Bazel's launcher, and its output base (macOS: /private/var/tmp/_bazel_$USER, Linux: ~/.cache/bazel),
 # where the aspect's outputs and the jars live.
-optional = ["process:bazelisk", "process:bazel", "fs.read:/private/var/tmp", "fs.read:~/.cache/bazel", "events"]
+optional = ["process:bazelisk", "process:bazel", "fs.read:/private/var/tmp", "fs.read:~/.cache/bazel", "events", "storage"]
 
 [[contributes.commands]]
 id = "sync"
 title = "Bazel: Sync Project with BUILD Files"
+category = "Bazel"
+when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
+
+[[contributes.commands]]
+id = "sync-changed"
+title = "Bazel: Sync Workspaces with Changed BUILD Files"
 category = "Bazel"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
 
@@ -35,6 +41,18 @@ id = "open-project-view"
 title = "Bazel: Open Project View File"
 category = "Bazel"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
+
+[[contributes.commands]]
+id = "run-target"
+title = "Bazel: Run Target…"
+category = "Bazel"
+when = "workspaceContains:.openidea/bazel/query.txt"
+
+[[contributes.commands]]
+id = "debug-target"
+title = "Bazel: Debug Target…"
+category = "Bazel"
+when = "workspaceContains:.openidea/bazel/query.txt"
 
 [[contributes.commands]]
 id = "test-file"
@@ -73,6 +91,14 @@ path = "languages/bazelrc.toml"
 [[contributes.menus]]
 menu = "tools"
 command = "sync"
+
+[[contributes.menus]]
+menu = "tools"
+command = "run-target"
+
+[[contributes.menus]]
+menu = "tools"
+command = "debug-target"
 
 [[contributes.menus]]
 menu = "projectView.context"
