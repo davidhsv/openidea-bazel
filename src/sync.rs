@@ -157,8 +157,10 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
     let info = query::parse_bazel_info(&run.stdout);
     if info.execution_root.is_empty() || info.bazel_bin.is_empty() {
         return Err(SyncError::Failed(format!(
-            "bazel info printed no execution_root/bazel-bin:\n{}",
-            run.stdout
+            "bazel info printed no execution_root/bazel-bin (exit code {}):\n{}\n{}",
+            run.exit_code,
+            run.stdout,
+            run.stderr_tail.join("\n")
         )));
     }
     log.push(format!(
