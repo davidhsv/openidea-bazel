@@ -435,8 +435,15 @@ fn write_settings(
     log: &mut Vec<String>,
 ) -> Result<bool, SyncError> {
     let existing = host.read_workspace(SETTINGS)?;
-    let merged = settings::merge_openidea_settings(existing.as_deref(), jdtls_data_dir)
+    let mut merged = settings::merge_openidea_settings(existing.as_deref(), jdtls_data_dir)
         .map_err(|e| format!("{SETTINGS} could not be updated: {e}"))?;
+    // Bazel builds the workspace, as in IntelliJ's Bazel projects: a leftover root POM must not
+    // turn editor test runs into Maven builds.
+    if host.read_workspace("pom.xml")?.is_some() {
+        merged = settings::unlink_maven_poms(&merged, &["pom.xml"])
+            .map_err(|e| format!("{SETTINGS} could not be updated: {e}"))?;
+        log.push("the root pom.xml is unlinked from OpenIDEA's Maven model".into());
+    }
     let changed = write_if_changed(host, SETTINGS, &merged)?;
     let patterns = [
         "/.openidea/settings.toml",
@@ -863,6 +870,21 @@ java_ide_info {
         fn cancelled(&mut self) -> bool {
             self.cancelled
         }
+    }
+
+    #[test]
+    fn a_root_pom_is_unlinked_from_maven() {
+        let mut fake = Fake::new();
+        sync(&mut fake).unwrap();
+        assert!(!fake.workspace[SETTINGS].contains("unlinkedProjects"));
+        fake.workspace.insert("pom.xml".into(), "<project/>".into());
+        let s = sync(&mut fake).unwrap();
+        assert!(s.settings_changed);
+        assert!(
+            fake.workspace[SETTINGS].contains("unlinkedProjects = [\"pom.xml\"]"),
+            "{}",
+            fake.workspace[SETTINGS]
+        );
     }
 
     #[test]

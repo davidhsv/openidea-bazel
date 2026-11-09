@@ -16,7 +16,7 @@ activation = ["on-command:*", "on-startup-finished", "on-event:files-changed", "
 required = ["project.read", "project.write"]
 # Bazel's launcher, and its output base (macOS: /private/var/tmp/_bazel_$USER, Linux: ~/.cache/bazel),
 # where the aspect's outputs and the jars live.
-optional = ["process:bazelisk", "process:bazel", "fs.read:/private/var/tmp", "fs.read:~/.cache/bazel", "events", "storage"]
+optional = ["process:bazelisk", "process:bazel", "fs.read:/private/var/tmp", "fs.read:~/.cache/bazel", "events", "storage", "editor.read"]
 
 [[contributes.commands]]
 id = "sync"

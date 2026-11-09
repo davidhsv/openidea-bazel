@@ -107,6 +107,40 @@ fn last_key(path: &str) -> &str {
 /// The table at `path` (its last key under `parent`), created when missing: inline inside an
 /// inline table, dotted inside a dotted table, else a `[table]` (`implicit` hides its header while
 /// it holds no values). Anything else already at `path` is an error: the user's value is kept.
+/// `settings.toml` with `poms` unlinked from OpenIDEA's Maven model (IntelliJ's "Unlink Maven
+/// project"), keeping the ones the user unlinked: in a Bazel workspace, its run configurations and
+/// test runs from the editor would build with Maven.
+pub fn unlink_maven_poms(settings: &str, poms: &[&str]) -> Result<String, String> {
+    let mut doc: DocumentMut = settings
+        .parse()
+        .map_err(|e| format!("settings.toml is not valid TOML: {e}"))?;
+    let root = doc.as_item_mut();
+    let languages = table(root, "languages", true)?;
+    let java = table(languages, "languages.java", true)?;
+    let maven = table(java, "languages.java.maven", false)?;
+    let mut unlinked: Vec<String> = maven
+        .get("unlinkedProjects")
+        .and_then(Item::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    for pom in poms {
+        if !unlinked.iter().any(|u| u == pom) {
+            unlinked.push((*pom).to_string());
+        }
+    }
+    let unlinked: Vec<&str> = unlinked.iter().map(String::as_str).collect();
+    set(
+        maven,
+        "languages.java.maven.unlinkedProjects",
+        strings(&unlinked),
+    )?;
+    Ok(doc.to_string())
+}
+
 fn table<'a>(parent: &'a mut Item, path: &str, implicit: bool) -> Result<&'a mut Item, String> {
     let inline = parent.is_inline_table();
     let parent = parent
@@ -258,6 +292,21 @@ mod tests {
             strs(&java["project"]["resourceFilters"]),
             JDTLS_RESOURCE_FILTERS
         );
+    }
+
+    #[test]
+    fn the_root_pom_is_unlinked_once_and_the_users_unlinked_poms_stay() {
+        let once = unlink_maven_poms("", &["pom.xml"]).unwrap();
+        assert!(once.contains("unlinkedProjects = [\"pom.xml\"]"), "{once}");
+        assert_eq!(unlink_maven_poms(&once, &["pom.xml"]).unwrap(), once);
+        let user =
+            "[languages.java.maven]\nunlinkedProjects = [\"tools/pom.xml\"]\nhome = \"/mvn\"\n";
+        let out = unlink_maven_poms(user, &["pom.xml"]).unwrap();
+        assert!(
+            out.contains("unlinkedProjects = [\"tools/pom.xml\", \"pom.xml\"]"),
+            "{out}"
+        );
+        assert!(out.contains("home = \"/mvn\""), "{out}");
     }
 
     #[test]

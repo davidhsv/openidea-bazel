@@ -199,17 +199,33 @@ impl BazelPlugin {
                     "a Bazel test target for {rel} (sync after adding it)"
                 ))
             })?;
+        // With the caret in a test method (`editor.read`), that method alone, as IntelliJ's Bazel
+        // gutter runs it: the JUnit runners Bazel uses match `Class#method` against the filter.
+        let method = editor
+            .selections()
+            .ok()
+            .and_then(|s| s.first().map(|r| r.start.line))
+            .and_then(|line| test_method_at(&text, line as usize));
+        let filter = method.map(|m| format!("--test_filter={class}#{m}$"));
         // A log tab keeps the output (and the exit code) after Bazel ends, unlike a terminal tab.
         let mode = if debug {
             "--java_debug"
         } else {
             "--test_output=streamed"
         };
-        let log = ProcessLog::new(&bazel, &["test", &label, "--color=no", "--curses=no", mode]);
+        let mut args = vec!["test", &label, "--color=no", "--curses=no", mode];
+        if let Some(filter) = &filter {
+            args.push(filter);
+        }
+        let log = ProcessLog::new(&bazel, &args);
         let verb = if debug { "Debug" } else { "Test" };
+        let what = match method {
+            Some(m) => format!("{stem}.{m}"),
+            None => label.clone(),
+        };
         host::open_log_tab(
-            &format!("{verb} {label}"),
-            &format!("Bazel {verb}: {label}"),
+            &format!("{verb} {what}"),
+            &format!("Bazel {verb}: {what}"),
             &log,
         )?;
         if debug {
@@ -506,6 +522,72 @@ fn matching_targets<'a>(targets: &[(&'a str, &'a str)], filter: &str) -> Vec<(&'
         .filter(|(label, _)| label.to_lowercase().contains(&filter))
         .copied()
         .collect()
+}
+
+/// The JUnit test method whose declaration or body holds 0-based `line`: the closest method
+/// declared at or above it and annotated `@Test` (or a JUnit 5 test annotation) right above.
+fn test_method_at(text: &str, line: usize) -> Option<&str> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = line.min(lines.len().checked_sub(1)?);
+    loop {
+        if let Some(name) = method_name(lines[i]) {
+            let annotated = lines[..i]
+                .iter()
+                .rev()
+                .map(|l| l.trim())
+                .take_while(|l| l.starts_with('@') || l.is_empty() || l.starts_with("//"))
+                .any(|l| {
+                    [
+                        "@Test",
+                        "@ParameterizedTest",
+                        "@RepeatedTest",
+                        "@TestFactory",
+                    ]
+                    .iter()
+                    .any(|a| {
+                        l == *a
+                            || l.starts_with(&format!("{a}("))
+                            || l.starts_with(&format!("{a} "))
+                    })
+                });
+            return annotated.then_some(name);
+        }
+        // A class or another member's end above the caret: not inside a method.
+        if lines[i].trim_start().starts_with("class ") || lines[i].contains(" class ") {
+            return None;
+        }
+        i = i.checked_sub(1)?;
+    }
+}
+
+/// The name of the method a line declares (`void name(`, with any modifiers).
+fn method_name(line: &str) -> Option<&str> {
+    let before = line.split('(').next()?.trim_end();
+    if !line.contains('(') || before.contains('=') || before.contains("new ") {
+        return None;
+    }
+    let mut words = before.split_whitespace().rev();
+    let name = words.next()?;
+    let return_type = words.next()?;
+    let valid = |w: &str| w.chars().all(|c| c.is_alphanumeric() || c == '_');
+    (valid(name)
+        && ![
+            "if",
+            "for",
+            "while",
+            "switch",
+            "catch",
+            "return",
+            "synchronized",
+        ]
+        .contains(&name)
+        && !["return", "new", "throw", "else"].contains(&return_type)
+        && return_type
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_')
+        && !return_type.ends_with([';', ',']))
+    .then_some(name)
 }
 
 /// `--run_under=env NAME=value…`: Bazel 7 has no `--run_env`, and the binary inherits only the
@@ -945,6 +1027,22 @@ mod tests {
             ["A=1", "B=\"q\"", "C=x,y"]
         );
         assert!(json_strings("[]").is_empty());
+    }
+
+    #[test]
+    fn the_caret_finds_its_test_method() {
+        let text = "package x;\n\n@RunWith(JUnit4.class)\npublic class IsoInstantTest {\n\n  @Test\n  public void mysqlTimestampToInstant() {\n    assertEquals(\n        1L, f(\"a\"));\n  }\n\n  private static long f(String s) {\n    return 1;\n  }\n\n  @ParameterizedTest\n  @ValueSource(ints = {1})\n  void each(int i) {}\n}\n";
+        assert_eq!(test_method_at(text, 6), Some("mysqlTimestampToInstant"));
+        assert_eq!(test_method_at(text, 8), Some("mysqlTimestampToInstant"));
+        assert_eq!(test_method_at(text, 12), None, "a helper is not a test");
+        assert_eq!(test_method_at(text, 17), Some("each"));
+        assert_eq!(
+            test_method_at(text, 3),
+            None,
+            "the class line runs the class"
+        );
+        assert_eq!(test_method_at(text, 0), None);
+        assert_eq!(test_method_at("", 0), None);
     }
 
     #[test]
