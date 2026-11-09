@@ -33,7 +33,6 @@ pub const JDTLS_RESOURCE_FILTERS: &[&str] = &["node_modules", "\\.git", "bazel-.
 /// Heads the lines `ensure_git_excludes` appends.
 pub const GIT_EXCLUDES_COMMENT: &str = "# openidea-bazel";
 
-/// `existing` with the jdtls settings the Bazel project needs; `jdtls_data_dir` is its `-data` workspace.
 /// Whether a `settings.toml` already holds this plugin's settings.
 pub fn is_managed(settings: &str) -> bool {
     settings
@@ -41,9 +40,30 @@ pub fn is_managed(settings: &str) -> bool {
         .any(|l| l.trim_start().starts_with(MANAGED_MARKER))
 }
 
+/// [`JDTLS_IMPORT_EXCLUSIONS`] below `workspace_root`. jdtls matches them against absolute paths,
+/// so unanchored they would also match the workspace itself: a worktree called `bazel-x`, or one
+/// under `.claude/worktrees/`, would import nothing.
+pub fn import_exclusions(workspace_root: &str) -> Vec<String> {
+    let mut root = String::new();
+    for c in workspace_root.trim_end_matches('/').chars() {
+        // Java's glob syntax: these are special even in a literal path.
+        if "*?[]{}\\".contains(c) {
+            root.push('\\');
+        }
+        root.push(c);
+    }
+    JDTLS_IMPORT_EXCLUSIONS
+        .iter()
+        .map(|e| format!("{root}/{e}"))
+        .collect()
+}
+
+/// `existing` with the jdtls settings the Bazel project at `workspace_root` needs;
+/// `jdtls_data_dir` is its `-data` workspace.
 pub fn merge_openidea_settings(
     existing: Option<&str>,
     jdtls_data_dir: &str,
+    workspace_root: &str,
 ) -> Result<String, String> {
     let existing = existing.unwrap_or("");
     let mut doc: DocumentMut = existing
@@ -64,7 +84,7 @@ pub fn merge_openidea_settings(
     set(
         import,
         "languageServers.jdtls.settings.java.import.exclusions",
-        strings(JDTLS_IMPORT_EXCLUSIONS),
+        Value::Array(import_exclusions(workspace_root).iter().collect::<Array>()),
     )?;
     let maven = table(
         import,
@@ -271,6 +291,7 @@ pub fn ensure_git_excludes(existing: Option<&str>, patterns: &[&str]) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+    const WS: &str = "/ws/demo";
 
     const DATA_DIR: &str =
         "/Users/me/Library/Application Support/ai.l0ng.openidea/lsp/jdtls/bazel-877507b5c805";
@@ -294,10 +315,24 @@ mod tests {
         let java = &jdtls["settings"]["java"];
         assert_eq!(java["import"]["maven"]["enabled"].as_bool(), Some(false));
         assert_eq!(java["import"]["gradle"]["enabled"].as_bool(), Some(false));
-        assert_eq!(strs(&java["import"]["exclusions"]), JDTLS_IMPORT_EXCLUSIONS);
+        assert_eq!(strs(&java["import"]["exclusions"]), import_exclusions(WS));
         assert_eq!(
             strs(&java["project"]["resourceFilters"]),
             JDTLS_RESOURCE_FILTERS
+        );
+    }
+
+    #[test]
+    fn import_exclusions_stay_below_the_workspace_root() {
+        let ex = import_exclusions("/code/worktrees/bazel-open-test/");
+        assert!(ex.contains(&"/code/worktrees/bazel-open-test/**/bazel-*".to_string()));
+        assert!(
+            ex.iter()
+                .all(|e| e.starts_with("/code/worktrees/bazel-open-test/**/"))
+        );
+        assert_eq!(
+            import_exclusions("/a[1]/x{y}")[0],
+            "/a\\[1\\]/x\\{y\\}/**/node_modules/**"
         );
     }
 
@@ -318,7 +353,7 @@ mod tests {
 
     #[test]
     fn writes_the_jdtls_settings_into_a_new_file() {
-        let out = merge_openidea_settings(None, DATA_DIR).unwrap();
+        let out = merge_openidea_settings(None, DATA_DIR, WS).unwrap();
         assert_managed(&parse(&out), DATA_DIR);
         assert_eq!(
             out,
@@ -328,7 +363,7 @@ mod tests {
 args = [\"-data\", \"{DATA_DIR}\"]
 
 [languageServers.jdtls.settings.java.import]
-exclusions = [\"**/node_modules/**\", \"**/.metadata/**\", \"**/archetype-resources/**\", \"**/META-INF/maven/**\", \"**/bazel-*\", \"**/bazel-*/**\", \"**/.claude/**\", \"**/.worktrees/**\", \"**/target/**\", \"**/.ijwb/**\", \"**/.openidea/**\"]
+exclusions = [\"/ws/demo/**/node_modules/**\", \"/ws/demo/**/.metadata/**\", \"/ws/demo/**/archetype-resources/**\", \"/ws/demo/**/META-INF/maven/**\", \"/ws/demo/**/bazel-*\", \"/ws/demo/**/bazel-*/**\", \"/ws/demo/**/.claude/**\", \"/ws/demo/**/.worktrees/**\", \"/ws/demo/**/target/**\", \"/ws/demo/**/.ijwb/**\", \"/ws/demo/**/.openidea/**\"]
 
 [languageServers.jdtls.settings.java.import.maven]
 enabled = false
@@ -349,7 +384,10 @@ resourceFilters = [\"node_modules\", '\\.git', \"bazel-.*\", '\\.ijwb']
         ] {
             assert!(!out.lines().any(|l| l == header), "{header} in\n{out}");
         }
-        assert_eq!(merge_openidea_settings(Some(""), DATA_DIR).unwrap(), out);
+        assert_eq!(
+            merge_openidea_settings(Some(""), DATA_DIR, WS).unwrap(),
+            out
+        );
     }
 
     #[test]
@@ -362,8 +400,8 @@ resourceFilters = [\"node_modules\", '\\.git', \"bazel-.*\", '\\.ijwb']
             Some("# mine\ntheme = \"x\"\n[languageServers]\njdtls.command = \"/opt/jdtls\"\n"),
         ];
         for input in inputs {
-            let once = merge_openidea_settings(input, DATA_DIR).unwrap();
-            let twice = merge_openidea_settings(Some(&once), DATA_DIR).unwrap();
+            let once = merge_openidea_settings(input, DATA_DIR, WS).unwrap();
+            let twice = merge_openidea_settings(Some(&once), DATA_DIR, WS).unwrap();
             assert_eq!(twice, once, "input {input:?}");
             assert_eq!(once.matches(MANAGED_MARKER).count(), 1);
             assert_managed(&parse(&once), DATA_DIR);
@@ -393,7 +431,7 @@ maven = { enabled = true, offline = true }
 [languageServers.jdtls.settings.java.format]
 tabSize = 4
 ";
-        let out = merge_openidea_settings(Some(existing), "/new data").unwrap();
+        let out = merge_openidea_settings(Some(existing), "/new data", WS).unwrap();
         let doc = parse(&out);
         assert_managed(&doc, "/new data");
         assert!(
@@ -417,7 +455,7 @@ tabSize = 4
             Some(true)
         );
         assert_eq!(
-            merge_openidea_settings(Some(&out), "/new data").unwrap(),
+            merge_openidea_settings(Some(&out), "/new data", WS).unwrap(),
             out
         );
     }
@@ -427,7 +465,7 @@ tabSize = 4
         let existing = format!(
             "{MANAGED_COMMENT}\n[languageServers.jdtls]\nargs = [\n    '-data',\n    '{DATA_DIR}',\n]\n"
         );
-        let out = merge_openidea_settings(Some(&existing), DATA_DIR).unwrap();
+        let out = merge_openidea_settings(Some(&existing), DATA_DIR, WS).unwrap();
         assert!(out.starts_with(&existing), "{out}");
         assert_managed(&parse(&out), DATA_DIR);
     }
@@ -435,7 +473,7 @@ tabSize = 4
     #[test]
     fn dotted_and_inline_tables_are_extended_in_their_own_style() {
         let dotted = "[languageServers]\njdtls.command = \"jdtls\"\n";
-        let out = merge_openidea_settings(Some(dotted), DATA_DIR).unwrap();
+        let out = merge_openidea_settings(Some(dotted), DATA_DIR, WS).unwrap();
         assert_managed(&parse(&out), DATA_DIR);
         assert!(out.contains("jdtls.args = [\"-data\""), "{out}");
         assert!(
@@ -444,27 +482,30 @@ tabSize = 4
         );
 
         let inline = "[languageServers]\njdtls = { command = \"jdtls\" }\n";
-        let out = merge_openidea_settings(Some(inline), DATA_DIR).unwrap();
+        let out = merge_openidea_settings(Some(inline), DATA_DIR, WS).unwrap();
         assert_managed(&parse(&out), DATA_DIR);
         assert!(
             out.contains("[languageServers]\njdtls = { command = \"jdtls\" , args = [\"-data\""),
             "{out}"
         );
-        assert_eq!(merge_openidea_settings(Some(&out), DATA_DIR).unwrap(), out);
+        assert_eq!(
+            merge_openidea_settings(Some(&out), DATA_DIR, WS).unwrap(),
+            out
+        );
     }
 
     #[test]
     fn data_dirs_with_quotes_and_backslashes_round_trip() {
         let dir = r#"C:\Users\me\AppData\jdtls "bazel" 'x'"#;
-        let out = merge_openidea_settings(None, dir).unwrap();
+        let out = merge_openidea_settings(None, dir, WS).unwrap();
         assert_managed(&parse(&out), dir);
-        assert_eq!(merge_openidea_settings(Some(&out), dir).unwrap(), out);
+        assert_eq!(merge_openidea_settings(Some(&out), dir, WS).unwrap(), out);
     }
 
     #[test]
     fn invalid_toml_is_an_error_not_an_overwrite() {
-        let err =
-            merge_openidea_settings(Some("[languageServers\nargs = 1\n"), DATA_DIR).unwrap_err();
+        let err = merge_openidea_settings(Some("[languageServers\nargs = 1\n"), DATA_DIR, WS)
+            .unwrap_err();
         assert!(
             err.starts_with("settings.toml is not valid TOML: "),
             "{err}"
@@ -494,7 +535,7 @@ tabSize = 4
         ];
         for (input, expected) in cases {
             assert_eq!(
-                merge_openidea_settings(Some(input), DATA_DIR).unwrap_err(),
+                merge_openidea_settings(Some(input), DATA_DIR, WS).unwrap_err(),
                 expected
             );
         }

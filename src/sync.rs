@@ -137,7 +137,8 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
         .is_some_and(|t| settings::is_managed(&t))
     {
         let private = host.private_dir()?;
-        summary.settings_changed = write_settings(host, &jdtls_data_dir(&private, &root, ""), log)?;
+        summary.settings_changed =
+            write_settings(host, &jdtls_data_dir(&private, &root, ""), &root, log)?;
     }
     let bazelignore = host.read_workspace(".bazelignore")?;
     let roots =
@@ -237,7 +238,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
         write_eclipse(host, &model, &workspace_name, log, &mut summary.warnings)?;
     summary.project_changed = project_changed;
     let data_dir = jdtls_data_dir(&private, &root, &links_key);
-    summary.settings_changed |= write_settings(host, &data_dir, log)?;
+    summary.settings_changed |= write_settings(host, &data_dir, &root, log)?;
     timing.mark("project files");
     log.push(timing.line());
     Ok(summary)
@@ -443,10 +444,11 @@ fn write_eclipse(
 fn write_settings(
     host: &mut dyn SyncHost,
     jdtls_data_dir: &str,
+    root: &str,
     log: &mut Vec<String>,
 ) -> Result<bool, SyncError> {
     let existing = host.read_workspace(SETTINGS)?;
-    let mut merged = settings::merge_openidea_settings(existing.as_deref(), jdtls_data_dir)
+    let mut merged = settings::merge_openidea_settings(existing.as_deref(), jdtls_data_dir, root)
         .map_err(|e| format!("{SETTINGS} could not be updated: {e}"))?;
     // Bazel builds the workspace, as in IntelliJ's Bazel projects: a leftover root POM must not
     // turn editor test runs into Maven builds.
