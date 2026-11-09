@@ -40,6 +40,10 @@ pub struct BazelPlugin {
     bazel: Option<String>,
     /// Project roots already checked for a sync on open in this session.
     opened: FxHashSet<String>,
+    /// Roots of the workspaces synced at least once: the ones whose tests the gutter offers.
+    synced: FxHashSet<String>,
+    /// Project roots the gutter already looked for project data in.
+    checked: FxHashSet<String>,
     /// Roots of the workspaces whose BUILD files changed since their last sync. The status item
     /// is shared by every window, so it names them, and clicking it syncs them, not the focused one.
     changed: BTreeSet<String>,
@@ -64,8 +68,16 @@ impl Plugin for BazelPlugin {
             host::subscribe(EventKind::VcsChanged)?;
         }
         // Projects already open when the plugin starts; the ones a window opens later come in
-        // through its first event (see `handle_events`).
+        // through its first event (see `handle_events`). A synced one is only remembered here: the
+        // check of its BUILD files waits for that event, so that the gutter request that may have
+        // activated the plugin is answered within the editor's budget.
         for project in host::projects().unwrap_or_default() {
+            if is_bazel_workspace(&project) && has_project_data(&project) {
+                if let Ok(root) = project.root() {
+                    self.synced.insert(root);
+                }
+                continue;
+            }
             self.on_project_open(&project);
         }
         Ok(())
@@ -142,6 +154,7 @@ impl BazelPlugin {
             return;
         }
         if has_project_data(project) {
+            self.synced.insert(project.root().unwrap_or_default());
             // A checkout made while the IDE was closed has no file events.
             if synced_build_files_edited(project, modified(project, SYNC_LOG)) {
                 self.mark_changed(project);
@@ -220,6 +233,23 @@ impl BazelPlugin {
             args.push(format!("--test_filter={class}#{method}$"));
         }
         host::start_run(BAZEL_TEST_CONFIG, &args, debug).map(Some)
+    }
+
+    /// Whether `path` is in a synced workspace. A plugin activated before its windows registered
+    /// their projects learns of them here: each project is checked once, then remembered.
+    fn is_synced(&mut self, path: &str) -> bool {
+        let inside = |root: &str| path.starts_with(&format!("{}/", root.trim_end_matches('/')));
+        if self.synced.iter().any(|r| inside(r)) {
+            return true;
+        }
+        for project in host::projects().unwrap_or_default() {
+            let Ok(root) = project.root() else { continue };
+            if inside(&root) && self.checked.insert(root.clone()) && has_project_data(&project) {
+                self.synced.insert(root);
+                return true;
+            }
+        }
+        false
     }
 
     fn mark_changed(&mut self, project: &Project) {
@@ -370,6 +400,7 @@ impl BazelPlugin {
         };
         match result {
             Ok(summary) => {
+                self.synced.insert(root.clone());
                 set_status(
                     "Bazel: synced",
                     "Synced with the BUILD files — click to sync again",
@@ -573,15 +604,6 @@ fn method_name(line: &str) -> Option<&str> {
     .then_some(name)
 }
 
-/// Whether `path` is in an open project that was synced (its target index finds the test target).
-fn synced(path: &str) -> bool {
-    host::projects().unwrap_or_default().iter().any(|p| {
-        p.root()
-            .is_ok_and(|r| path.starts_with(&format!("{}/", r.trim_end_matches('/'))))
-            && p.exists(sync::TARGET_INDEX).unwrap_or(false)
-    })
-}
-
 /// The `package`-qualified class a Java source declares, named after its file.
 fn qualified_class(rel: &str, text: &str) -> String {
     let stem = rel
@@ -745,7 +767,8 @@ impl LanguageFeatures for BazelPlugin {
     /// Run and Debug beside a synced workspace's test classes and methods, as IntelliJ's Bazel
     /// plugin offers them in the gutter.
     fn gutter_actions(&mut self, doc: &Document) -> Vec<GutterAction> {
-        if !doc.path.ends_with(".java") || !doc.text.contains("@Test") || !synced(&doc.path) {
+        if !doc.path.ends_with(".java") || !doc.text.contains("@Test") || !self.is_synced(&doc.path)
+        {
             return Vec::new();
         }
         let stem = doc
@@ -922,7 +945,12 @@ mod tests {
         );
         host.add_file(SYNC_LOG, "Synced");
         host.add_file(sync::TARGET_INDEX, "app/A.java\t//app:lib\tjava_library\n");
-        activated(ALL);
+        let mut plugin = activated(ALL);
+        assert!(
+            !host.status_items().contains_key(STATUS),
+            "checked on the window's first event, not during activation"
+        );
+        plugin.handle_events(&[Event::EditorFocused(None)], &host.invocation());
         assert!(host.tasks().is_empty(), "no sync without asking");
         assert_eq!(
             host.status_items()[STATUS].text,
@@ -1128,6 +1156,20 @@ mod tests {
     const ISO_TEST: &str = "package com.x;\n\n@RunWith(JUnit4.class)\npublic class IsoTest {\n\n  @Test\n  public void parses() {\n    assertEquals(1, 1);\n  }\n\n  private void helper() {}\n\n  @Test\n  public void formats() {}\n}\n";
 
     #[test]
+    fn the_gutter_finds_a_synced_workspace_the_plugin_activated_without() {
+        let host = synced_test_host();
+        let mut plugin = BazelPlugin::default();
+        let doc = Document {
+            path: "/project/lib/IsoTest.java".into(),
+            language: "java".into(),
+            version: 1,
+            text: ISO_TEST.into(),
+        };
+        assert_eq!(plugin.gutter_actions(&doc).len(), 6);
+        drop(host);
+    }
+
+    #[test]
     fn test_lines_are_the_class_then_each_test_method() {
         assert_eq!(
             test_lines(ISO_TEST, "IsoTest"),
@@ -1149,6 +1191,11 @@ mod tests {
 
     fn synced_test_host() -> MockHost {
         let host = MockHost::install().with_capabilities(ALL);
+        host.add_file("MODULE.bazel", "");
+        host.add_file(
+            ".project",
+            "<projectDescription><comment>Generated from Bazel by openidea-bazel</comment></projectDescription>",
+        );
         host.add_file(
             sync::TARGET_INDEX,
             "class:com.x.IsoTest\t//lib:IsoTest\tjava_test\n",
