@@ -1,6 +1,6 @@
 # Bazel for OpenIDEA
 
-An [OpenIDEA](https://github.com/l0ng-ai/openidea) plugin that opens Java Bazel workspaces from their BUILD files instead of Maven. It is a port of the Java *aspect sync* of the official Bazel plugin for IntelliJ ([bazelbuild/intellij](https://github.com/bazelbuild/intellij), branch `ijwb`) to OpenIDEA's WebAssembly plugin API (1.3, OpenIDEA 0.1.39+).
+An [OpenIDEA](https://github.com/l0ng-ai/openidea) plugin that opens Java Bazel workspaces from their BUILD files instead of Maven. It is a port of the Java *aspect sync* of the official Bazel plugin for IntelliJ ([bazelbuild/intellij](https://github.com/bazelbuild/intellij), branch `ijwb`) to OpenIDEA's WebAssembly plugin API (1.4). It needs OpenIDEA built from [davidhsv/openidea `plugin-test-runners`](https://github.com/davidhsv/openidea/tree/plugin-test-runners) (upstream `main` plus debuggable plugin run configurations and gutter menus) until those reach a release.
 
 ## How it works
 
@@ -27,7 +27,8 @@ Other features:
 - **Starlark** (`BUILD`, `BUILD.bazel`, `*.bzl`, `WORKSPACE`, `MODULE.bazel`), **project view** and **bazelrc** languages.
 - **Run configurations** `bazel build //...` and `bazel test //...`.
 - A status bar item that says which workspaces' BUILD files changed since their last sync (an edit, a checkout or a branch switch, also one made while the IDE was closed); clicking it syncs those workspaces, whichever window it is clicked in.
-- **Bazel: Test File** and **Bazel: Debug Test File** (editor context menu › Bazel) run the focused test class's target with `bazel test`; the debug variant adds `--java_debug`, so *Run › Attach to Process* attaches to the test JVM on port 5005.
+- **Run and Debug in the gutter** of test classes and `@Test` methods, as IntelliJ's Bazel plugin offers them: *Run 'Bazel test IsoInstantTest.parses'* runs `bazel test <target> --test_filter=<class>#<method>$` in the Run tool window; *Debug* adds `--java_debug` and the Java debugger attaches to the test JVM by itself. **Bazel: Test File** and **Bazel: Debug Test File** (editor context menu › Bazel) do the same for the file, or for the method under the caret.
+- A sync unlinks the workspace's root `pom.xml` from OpenIDEA's Maven model, as IntelliJ drops Maven in a Bazel project: the editor's test runs and run configurations stop building with Maven.
 - **Bazel: Run Target…** and **Bazel: Debug Target…** (Tools menu) `bazel run` a binary of the synced directories in a log tab: type a label or part of one (it starts as the last target run in the workspace). Debug lists `java_binary` targets and passes their launcher `--debug`: the JVM waits on port 5005 for *Attach to Process*. The binaries start with the project's `runEnvironment` setting (`NAME=value` entries), as a run configuration's environment, e.g. in `.openidea/settings.toml`:
 
   ```toml
@@ -67,7 +68,7 @@ cargo run --release --example sync_cli -- /path/to/workspace   # the whole sync 
 
 - The whole sync runs in one plugin call, so a much larger workspace than the one above can exceed the CPU budget: OpenIDEA has no way for a plugin to continue work in a later call, which sharding (IntelliJ's `shard_sync`) needs.
 - After the build, a sync reads every info file and source through the IDE, one call each: on Allocadia that takes about 7 s (measured 2026-11-08). IntelliJ's own log of an Allocadia sync (2026-10-13, another commit) shows about 4 s for the same step, which it runs multi-threaded. The plugin API has no batch read and no file times in directory listings, which a faster incremental sync needs.
-- No test tree: OpenIDEA builds it from Maven and Gradle reports only, and plugins cannot start run sessions. Tests run in a log tab, and debugging attaches by hand (*Attach to Process*).
+- No test tree yet: Bazel's JUnit runner prints no per-test lines, so the Run tab shows the output; reading `bazel-testlogs/**/test.xml` through the API 1.4 `test-results` export is the next step.
 - jdtls data directories of replaced link sets stay in the plugin's data directory (`…/plugins/.data/davidhsv.bazel/files/jdtls/<hash>`); plugins have no delete. Any of them except the one in `.openidea/settings.toml` can be removed while OpenIDEA is closed.
 - The aspect ships without IntelliJ's tool jars (PackageParser, JarFilter, CreateAar). Packages are read from the sources instead, and a target that mixes hand-written and generated sources contributes its whole jar.
 - Only Java is synced (no Kotlin, Scala, Python, C++, Go or Android).

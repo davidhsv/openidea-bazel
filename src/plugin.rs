@@ -7,6 +7,7 @@ use openidea_plugin::{
 };
 
 use openidea_plugin::details::ProcessLog;
+use openidea_plugin::language_features::{Document, GutterAction, LanguageFeatures};
 
 use std::collections::BTreeSet;
 
@@ -28,6 +29,8 @@ const BUILD_GLOBS: &[&str] = &[
 const STATUS: &str = "sync";
 /// Setting: sync a Bazel workspace that was never synced when it opens.
 const SYNC_ON_OPEN: &str = "syncOnOpen";
+/// The `runDetectors` entry tests run with (`bazel test`, debugged with `--java_debug`).
+const BAZEL_TEST_CONFIG: &str = "bazel-test";
 /// Setting: `NAME=value` entries the binaries of Run Target and Debug Target start with.
 const RUN_ENVIRONMENT: &str = "runEnvironment";
 
@@ -72,7 +75,7 @@ impl Plugin for BazelPlugin {
         &mut self,
         id: &str,
         ctx: &Invocation,
-        _arg: Option<&str>,
+        arg: Option<&str>,
     ) -> Result<Option<String>, Error> {
         let project = ctx.project().ok_or("no project is open")?;
         match id {
@@ -80,6 +83,11 @@ impl Plugin for BazelPlugin {
             "sync-changed" => self.sync_changed(&project),
             "open-sync-log" => open(&project, SYNC_LOG),
             "test-file" => self.test_file(&project, ctx, false),
+            "gutter-test" => {
+                let (debug, line, path) =
+                    parse_gutter_argument(arg.unwrap_or_default()).ok_or("not a test line")?;
+                self.run_test(&project, path, Some(line), debug)
+            }
             "run-target" => self.run_target(&project, false),
             "debug-target" => self.run_target(&project, true),
             "debug-test-file" => self.test_file(&project, ctx, true),
@@ -155,42 +163,49 @@ impl BazelPlugin {
         }
     }
 
-    /// Runs the focused file's test target through Bazel in a log tab, as IntelliJ's Bazel plugin
-    /// runs tests (`bazel test`); `debug` adds `--java_debug`, so the test JVM waits for a debugger
-    /// on port 5005, which Attach to Process lists as a JDWP process.
+    /// Test / Debug Test File: the focused file's tests, or the test method under the caret
+    /// (with `editor.read`).
     fn test_file(
         &mut self,
         project: &Project,
         ctx: &Invocation,
         debug: bool,
     ) -> Result<Option<String>, Error> {
-        let bazel = self
-            .bazel
-            .clone()
-            .ok_or_else(|| Error::Denied("process:bazelisk".into()))?;
         let editor = ctx
             .editor()
             .ok_or("open the test file in an editor first")?;
+        let line = editor
+            .selections()
+            .ok()
+            .and_then(|s| s.first().map(|r| r.start.line as usize));
+        self.run_test(project, &editor.path(), line, debug)
+    }
+
+    /// Runs a test file's Bazel test target in the Run tool window, as IntelliJ's Bazel plugin
+    /// runs tests: only the test method at `line` when there is one there. With `debug`, the IDE
+    /// adds the `bazel-test` configuration's `debugArgs` (`--java_debug`) and attaches the Java
+    /// debugger to the test JVM.
+    fn run_test(
+        &mut self,
+        project: &Project,
+        path: &str,
+        line: Option<usize>,
+        debug: bool,
+    ) -> Result<Option<String>, Error> {
+        if self.bazel.is_none() {
+            return Err(Error::Denied("process:bazelisk".into()));
+        }
         let root = project.root()?;
-        let path = editor.path();
         let rel = path
             .strip_prefix(&format!("{}/", root.trim_end_matches('/')))
-            .unwrap_or(&path)
+            .unwrap_or(path)
             .to_string();
         let index = project
             .read_file(sync::TARGET_INDEX)
             .map_err(|_| Error::NotFound("the target index (sync the project first)".into()))?;
         // The class the file declares, as the test target names it: its `package` and its name.
         let text = project.read_file(&rel).unwrap_or_default();
-        let stem = rel
-            .rsplit('/')
-            .next()
-            .unwrap_or(&rel)
-            .trim_end_matches(".java");
-        let class = match crate::model::declared_package(&text) {
-            Some(pkg) if !pkg.is_empty() => format!("{pkg}.{stem}"),
-            _ => stem.to_string(),
-        };
+        let class = qualified_class(&rel, &text);
         let label = sync::test_targets_of(&index, &rel, Some(&class))
             .first()
             .map(|l| l.to_string())
@@ -199,44 +214,12 @@ impl BazelPlugin {
                     "a Bazel test target for {rel} (sync after adding it)"
                 ))
             })?;
-        // With the caret in a test method (`editor.read`), that method alone, as IntelliJ's Bazel
-        // gutter runs it: the JUnit runners Bazel uses match `Class#method` against the filter.
-        let method = editor
-            .selections()
-            .ok()
-            .and_then(|s| s.first().map(|r| r.start.line))
-            .and_then(|line| test_method_at(&text, line as usize));
-        let filter = method.map(|m| format!("--test_filter={class}#{m}$"));
-        // A log tab keeps the output (and the exit code) after Bazel ends, unlike a terminal tab.
-        let mode = if debug {
-            "--java_debug"
-        } else {
-            "--test_output=streamed"
-        };
-        let mut args = vec!["test", &label, "--color=no", "--curses=no", mode];
-        if let Some(filter) = &filter {
-            args.push(filter);
+        let mut args = vec![label];
+        // The JUnit runners Bazel uses match `Class#method` against the filter.
+        if let Some(method) = line.and_then(|l| test_method_at(&text, l)) {
+            args.push(format!("--test_filter={class}#{method}$"));
         }
-        let log = ProcessLog::new(&bazel, &args);
-        let verb = if debug { "Debug" } else { "Test" };
-        let what = match method {
-            Some(m) => format!("{stem}.{m}"),
-            None => label.clone(),
-        };
-        host::open_log_tab(
-            &format!("{verb} {what}"),
-            &format!("Bazel {verb}: {what}"),
-            &log,
-        )?;
-        if debug {
-            let _ = host::notify_with_actions(
-                NotificationLevel::Info,
-                "Bazel test waiting for the debugger",
-                "The test JVM listens on port 5005 once Bazel starts it: Run › Attach to Process… (⌥⇧F5) and pick it.",
-                &[],
-            );
-        }
-        Ok(None)
+        host::start_run(BAZEL_TEST_CONFIG, &args, debug).map(Some)
     }
 
     fn mark_changed(&mut self, project: &Project) {
@@ -590,6 +573,69 @@ fn method_name(line: &str) -> Option<&str> {
     .then_some(name)
 }
 
+/// Whether `path` is in an open project that was synced (its target index finds the test target).
+fn synced(path: &str) -> bool {
+    host::projects().unwrap_or_default().iter().any(|p| {
+        p.root()
+            .is_ok_and(|r| path.starts_with(&format!("{}/", r.trim_end_matches('/'))))
+            && p.exists(sync::TARGET_INDEX).unwrap_or(false)
+    })
+}
+
+/// The `package`-qualified class a Java source declares, named after its file.
+fn qualified_class(rel: &str, text: &str) -> String {
+    let stem = rel
+        .rsplit('/')
+        .next()
+        .unwrap_or(rel)
+        .trim_end_matches(".java");
+    match crate::model::declared_package(text) {
+        Some(pkg) if !pkg.is_empty() => format!("{pkg}.{stem}"),
+        _ => stem.to_string(),
+    }
+}
+
+/// The lines to run tests from: the file's class (all its tests), then each test method.
+fn test_lines<'a>(text: &'a str, stem: &str) -> Vec<(usize, Option<&'a str>)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let declares_class = |l: &str| {
+        l.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|w| w[0] == "class" && w[1] == stem)
+    };
+    let mut out: Vec<(usize, Option<&str>)> = lines
+        .iter()
+        .position(|l| declares_class(l))
+        .map(|i| (i, None))
+        .into_iter()
+        .collect();
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(name) = method_name(line)
+            && test_method_at(text, i) == Some(name)
+        {
+            out.push((i, Some(name)));
+        }
+    }
+    out
+}
+
+/// A gutter action's argument: `run`/`debug`, the 0-based line and the file.
+fn gutter_argument(debug: bool, line: usize, path: &str) -> String {
+    format!("{}\t{line}\t{path}", if debug { "debug" } else { "run" })
+}
+
+fn parse_gutter_argument(arg: &str) -> Option<(bool, usize, &str)> {
+    let mut parts = arg.splitn(3, '\t');
+    let debug = match parts.next()? {
+        "run" => false,
+        "debug" => true,
+        _ => return None,
+    };
+    let line = parts.next()?.parse().ok()?;
+    Some((debug, line, parts.next().filter(|p| !p.is_empty())?))
+}
+
 /// `--run_under=env NAME=value…`: Bazel 7 has no `--run_env`, and the binary inherits only the
 /// Bazel client's environment. `None` without entries; an entry without `=` is an error.
 fn run_under_env(env: &[String]) -> Result<Option<String>, String> {
@@ -695,7 +741,41 @@ fn first_lines(text: &str, n: usize) -> String {
 
 const DEFAULT_PROJECT_VIEW: &str = "directories:\n  .\n\nderive_targets_from_directories: true\n";
 
-register_plugin!(BazelPlugin);
+impl LanguageFeatures for BazelPlugin {
+    /// Run and Debug beside a synced workspace's test classes and methods, as IntelliJ's Bazel
+    /// plugin offers them in the gutter.
+    fn gutter_actions(&mut self, doc: &Document) -> Vec<GutterAction> {
+        if !doc.path.ends_with(".java") || !doc.text.contains("@Test") || !synced(&doc.path) {
+            return Vec::new();
+        }
+        let stem = doc
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches(".java");
+        test_lines(&doc.text, stem)
+            .into_iter()
+            .flat_map(|(line, method)| {
+                let what = match method {
+                    Some(m) => format!("{stem}.{m}"),
+                    None => stem.to_string(),
+                };
+                [(false, "run", "Run"), (true, "debug", "Debug")].map(|(debug, icon, verb)| {
+                    GutterAction {
+                        line: line as u32,
+                        icon: Some(icon.into()),
+                        tooltip: format!("{verb} 'Bazel test {what}'"),
+                        command: "gutter-test".into(),
+                        argument: Some(gutter_argument(debug, line, &doc.path)),
+                    }
+                })
+            })
+            .collect()
+    }
+}
+
+register_plugin!(BazelPlugin, language_features);
 
 #[cfg(test)]
 mod tests {
@@ -1043,6 +1123,129 @@ mod tests {
         );
         assert_eq!(test_method_at(text, 0), None);
         assert_eq!(test_method_at("", 0), None);
+    }
+
+    const ISO_TEST: &str = "package com.x;\n\n@RunWith(JUnit4.class)\npublic class IsoTest {\n\n  @Test\n  public void parses() {\n    assertEquals(1, 1);\n  }\n\n  private void helper() {}\n\n  @Test\n  public void formats() {}\n}\n";
+
+    #[test]
+    fn test_lines_are_the_class_then_each_test_method() {
+        assert_eq!(
+            test_lines(ISO_TEST, "IsoTest"),
+            [(3, None), (6, Some("parses")), (13, Some("formats"))]
+        );
+        assert!(test_lines("class Other {}", "IsoTest").is_empty());
+    }
+
+    #[test]
+    fn gutter_arguments_round_trip() {
+        let arg = gutter_argument(true, 6, "/project/a b/IsoTest.java");
+        assert_eq!(
+            parse_gutter_argument(&arg),
+            Some((true, 6, "/project/a b/IsoTest.java"))
+        );
+        assert_eq!(parse_gutter_argument("walk\t1\t/x"), None);
+        assert_eq!(parse_gutter_argument("run\tx\t/x"), None);
+    }
+
+    fn synced_test_host() -> MockHost {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file(
+            sync::TARGET_INDEX,
+            "class:com.x.IsoTest\t//lib:IsoTest\tjava_test\n",
+        );
+        host.add_file("lib/IsoTest.java", ISO_TEST);
+        host.set_run_configurations(vec![openidea_plugin::PluginRunConfiguration {
+            id: BAZEL_TEST_CONFIG.into(),
+            name: "bazel test".into(),
+            program: "bazelisk".into(),
+            test: true,
+            ..Default::default()
+        }]);
+        host.set_run_configuration_debugger(BAZEL_TEST_CONFIG);
+        host
+    }
+
+    #[test]
+    fn the_gutter_runs_or_debugs_one_test_method_or_the_class() {
+        let host = synced_test_host();
+        let mut plugin = activated(ALL);
+        let path = "/project/lib/IsoTest.java";
+        for (debug, line) in [(false, 6), (true, 13), (false, 3)] {
+            plugin
+                .run_command(
+                    "gutter-test",
+                    &host.invocation(),
+                    Some(&gutter_argument(debug, line, path)),
+                )
+                .unwrap();
+        }
+        let runs: Vec<(String, Vec<String>, bool)> = host
+            .configuration_runs()
+            .into_iter()
+            .map(|(_, config, args, debug)| (config, args, debug))
+            .collect();
+        assert_eq!(
+            runs,
+            [
+                (
+                    "bazel-test".to_string(),
+                    vec![
+                        "//lib:IsoTest".to_string(),
+                        "--test_filter=com.x.IsoTest#parses$".to_string()
+                    ],
+                    false
+                ),
+                (
+                    "bazel-test".to_string(),
+                    vec![
+                        "//lib:IsoTest".to_string(),
+                        "--test_filter=com.x.IsoTest#formats$".to_string()
+                    ],
+                    true
+                ),
+                (
+                    "bazel-test".to_string(),
+                    vec!["//lib:IsoTest".to_string()],
+                    false
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn gutter_actions_offer_run_and_debug_on_test_lines_of_a_synced_workspace() {
+        let host = synced_test_host();
+        let mut plugin = activated(ALL);
+        let doc = |path: &str| Document {
+            path: path.into(),
+            language: "java".into(),
+            version: 1,
+            text: ISO_TEST.into(),
+        };
+        let actions = plugin.gutter_actions(&doc("/project/lib/IsoTest.java"));
+        let shown: Vec<(u32, String)> = actions
+            .iter()
+            .map(|a| (a.line, a.tooltip.clone()))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                (3, "Run 'Bazel test IsoTest'".to_string()),
+                (3, "Debug 'Bazel test IsoTest'".to_string()),
+                (6, "Run 'Bazel test IsoTest.parses'".to_string()),
+                (6, "Debug 'Bazel test IsoTest.parses'".to_string()),
+                (13, "Run 'Bazel test IsoTest.formats'".to_string()),
+                (13, "Debug 'Bazel test IsoTest.formats'".to_string()),
+            ]
+        );
+        assert!(actions.iter().all(|a| a.command == "gutter-test"));
+        assert!(
+            plugin
+                .gutter_actions(&doc("/elsewhere/IsoTest.java"))
+                .is_empty(),
+            "not in a synced project"
+        );
+        drop(host);
     }
 
     #[test]

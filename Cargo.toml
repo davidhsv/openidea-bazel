@@ -18,7 +18,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
-openidea-plugin = { git = "https://github.com/l0ng-ai/openidea", tag = "v0.1.39" }
+openidea-plugin = { git = "https://github.com/davidhsv/openidea", branch = "plugin-test-runners" }
 toml_edit = { version = "0.22", default-features = false, features = ["parse", "display"] }
 
 [[example]]

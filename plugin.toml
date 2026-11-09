@@ -6,7 +6,7 @@ authors = ["David Vieira <davidhsv@gmail.com>"]
 license = "Apache-2.0"
 change-notes = "0.1.0 — first release: Sync Project with BUILD Files (aspect sync of Java targets into an Eclipse project for jdtls), Starlark and project view languages."
 categories = ["frameworks", "languages", "tools"]
-engines.openidea = "^1.3"
+engines.openidea = "^1.4"
 wasm = "dist/plugin.wasm"
 activation = ["on-command:*", "on-startup-finished", "on-event:files-changed", "on-event:editor-focused"]
 
@@ -41,6 +41,16 @@ id = "open-project-view"
 title = "Bazel: Open Project View File"
 category = "Bazel"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel || workspaceContains:.bazelproject"
+
+[[contributes.commands]]
+id = "gutter-test"
+title = "Bazel: Run Test at Line"
+category = "Bazel"
+when = "workspaceContains:.openidea/bazel/targets.tsv"
+
+[[contributes.providers]]
+kinds = ["gutter-actions"]
+languages = ["java"]
 
 [[contributes.commands]]
 id = "run-target"
@@ -104,6 +114,18 @@ command = "debug-target"
 menu = "projectView.context"
 command = "sync"
 when = "workspaceContains:MODULE.bazel || workspaceContains:WORKSPACE || workspaceContains:WORKSPACE.bazel"
+
+# The configuration tests run with, from the gutter and Test/Debug File: their target and
+# filter are appended; Debug adds --java_debug and attaches to the test JVM.
+[[contributes.runDetectors]]
+id = "bazel-test"
+name = "bazel test"
+files = ["MODULE.bazel", "WORKSPACE", "WORKSPACE.bazel"]
+command = "bazelisk"
+args = ["test", "--color=no", "--curses=no", "--test_output=streamed"]
+test = true
+debugger = "java-debug"
+debugArgs = ["--java_debug"]
 
 [[contributes.runDetectors]]
 id = "bazel-build-all"
