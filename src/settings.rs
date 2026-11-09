@@ -34,6 +34,13 @@ pub const JDTLS_RESOURCE_FILTERS: &[&str] = &["node_modules", "\\.git", "bazel-.
 pub const GIT_EXCLUDES_COMMENT: &str = "# openidea-bazel";
 
 /// `existing` with the jdtls settings the Bazel project needs; `jdtls_data_dir` is its `-data` workspace.
+/// Whether a `settings.toml` already holds this plugin's settings.
+pub fn is_managed(settings: &str) -> bool {
+    settings
+        .lines()
+        .any(|l| l.trim_start().starts_with(MANAGED_MARKER))
+}
+
 pub fn merge_openidea_settings(
     existing: Option<&str>,
     jdtls_data_dir: &str,

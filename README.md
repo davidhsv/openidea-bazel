@@ -21,7 +21,7 @@ The sync log (**Bazel: Show Last Sync Log**) ends with the time of each step: `t
 
 Like IntelliJ's startup sync, a Bazel workspace that was never synced syncs by itself when it opens (setting **Sync a Bazel workspace that was never synced when it opens**, on by default); one that was synced just loads its project.
 
-After the **first** sync, restart OpenIDEA (Find Action › *Restart IDE*), since the IDE reads `.openidea/settings.toml` when a project opens. After later syncs, restart the Java language server from the language servers popup in the status bar. jdtls reads `.classpath` when it starts. jdtls creates linked resources only when it imports a project, so a sync that changes the set of linked sources gives the workspace a new jdtls data directory, and the sync's notification asks for an OpenIDEA restart again.
+OpenIDEA applies the `.openidea/settings.toml` a sync writes without a restart (fork branch above): jdtls restarts on the Bazel project. A workspace's first sync turns jdtls' Maven import and Maven's run configurations off as it starts, before Bazel builds. After later syncs that only change the classpath, restart the Java language server from the language servers popup in the status bar, since jdtls reads `.classpath` when it starts.
 
 Other features:
 - **Starlark** (`BUILD`, `BUILD.bazel`, `*.bzl`, `WORKSPACE`, `MODULE.bazel`), **project view** and **bazelrc** languages.

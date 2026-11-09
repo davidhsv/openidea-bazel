@@ -447,10 +447,10 @@ fn notify_done(s: &SyncSummary) {
     } else {
         NotificationLevel::Warning
     };
-    // jdtls reads the Eclipse project when it starts, and the IDE reads `.openidea/settings.toml`
-    // when the project opens; plugins can trigger neither.
+    // OpenIDEA applies a changed `.openidea/settings.toml` itself, restarting jdtls with it; jdtls
+    // reads the Eclipse project only when it starts, which a plugin cannot trigger.
     if s.settings_changed {
-        body.push_str(" Restart OpenIDEA (Find Action › Restart IDE) so the Java language server loads the Bazel project.");
+        body.push_str(" The Java language server restarts with the Bazel project.");
     } else if s.project_changed {
         body.push_str(" Restart the Java language server (language servers in the status bar › jdtls › Restart) to load the new classpath.");
     }

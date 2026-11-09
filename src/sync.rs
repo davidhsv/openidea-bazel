@@ -130,6 +130,15 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
         .next()
         .unwrap_or("workspace")
         .to_string();
+    // A workspace's first sync takes minutes, and the IDE has opened it as a Maven project:
+    // jdtls' Maven import and the Maven run configurations go off now, not when it ends.
+    if !host
+        .read_workspace(SETTINGS)?
+        .is_some_and(|t| settings::is_managed(&t))
+    {
+        let private = host.private_dir()?;
+        summary.settings_changed = write_settings(host, &jdtls_data_dir(&private, &root, ""), log)?;
+    }
     let bazelignore = host.read_workspace(".bazelignore")?;
     let roots =
         import_roots::import_roots(&view, bazelignore.as_deref(), &workspace_name, DATA_DIR);
@@ -226,7 +235,7 @@ fn run(host: &mut dyn SyncHost, log: &mut Vec<String>) -> Result<SyncSummary, Sy
         write_eclipse(host, &model, &workspace_name, log, &mut summary.warnings)?;
     summary.project_changed = project_changed;
     let data_dir = jdtls_data_dir(&private, &root, &links_key);
-    summary.settings_changed = write_settings(host, &data_dir, log)?;
+    summary.settings_changed |= write_settings(host, &data_dir, log)?;
     timing.mark("project files");
     log.push(timing.line());
     Ok(summary)
@@ -870,6 +879,29 @@ java_ide_info {
         fn cancelled(&mut self) -> bool {
             self.cancelled
         }
+    }
+
+    #[test]
+    fn a_first_sync_turns_maven_off_before_bazel_runs() {
+        let mut fake = Fake::new();
+        fake.workspace.insert("pom.xml".into(), "<project/>".into());
+        fake.info_exit = 1;
+        assert!(sync(&mut fake).is_err(), "bazel info failed");
+        let settings = &fake.workspace[SETTINGS];
+        assert!(settings.contains("enabled = false"), "{settings}");
+        assert!(
+            settings.contains("unlinkedProjects = [\"pom.xml\"]"),
+            "{settings}"
+        );
+
+        // Once managed, only the end of a sync writes them.
+        fake.workspace
+            .insert(SETTINGS.into(), "# Managed by openidea-bazel\n[x]\n".into());
+        assert!(sync(&mut fake).is_err());
+        assert_eq!(
+            fake.workspace[SETTINGS],
+            "# Managed by openidea-bazel\n[x]\n"
+        );
     }
 
     #[test]
