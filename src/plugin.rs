@@ -66,7 +66,7 @@ impl Plugin for BazelPlugin {
             // A checkout rewrites many BUILD files at once; the file events of such a batch can
             // miss, the repository change does not.
             host::subscribe(EventKind::VcsChanged)?;
-            // The IDE's Light/Full mode (`ide.mode`).
+            // The IDE's Blaze/Deep mode (`ide.mode`).
             host::subscribe(EventKind::SettingsChanged)?;
         }
         // Projects already open when the plugin starts; the ones a window opens later come in
@@ -162,7 +162,7 @@ impl BazelPlugin {
     /// already on disk (the Eclipse project).
     fn on_project_open(&mut self, project: &Project) {
         let Ok(root) = project.root() else { return };
-        // Light mode runs no Bazel by itself: the workspace is looked at again in Full mode.
+        // Blaze mode runs no Bazel by itself: the workspace is looked at again in Deep mode.
         if light_mode() || !self.opened.insert(root) || !is_bazel_workspace(project) {
             return;
         }
@@ -265,7 +265,7 @@ impl BazelPlugin {
         false
     }
 
-    /// Light mode: the Bazel servers the workspaces keep running (one JVM each) stop. Full mode:
+    /// Blaze mode: the Bazel servers the workspaces keep running (one JVM each) stop. Deep mode:
     /// the open workspaces are set up as when they opened.
     fn mode_changed(&mut self) {
         let projects = host::projects().unwrap_or_default();
@@ -692,7 +692,7 @@ fn parse_gutter_argument(arg: &str) -> Option<(bool, usize, &str)> {
     Some((debug, line, parts.next().filter(|p| !p.is_empty())?))
 }
 
-/// Whether the IDE is in Light mode (`ide.mode`; hosts without modes are Full).
+/// Whether the IDE is in Blaze mode (`ide.mode` = light; hosts without modes are Deep).
 fn light_mode() -> bool {
     host::setting("ide.mode").as_deref() == Some("\"light\"")
 }
@@ -960,7 +960,7 @@ mod tests {
         host.add_file("MODULE.bazel", "");
         let mut plugin = activated(ALL);
         plugin.handle_events(&[Event::EditorFocused(None)], &host.invocation());
-        assert!(host.tasks().is_empty(), "no Bazel in light mode");
+        assert!(host.tasks().is_empty(), "no Bazel in Blaze mode");
         host.set_setting("ide.mode", r#""full""#);
         plugin.handle_events(&mode_event(), &host.invocation());
         assert_eq!(host.tasks().len(), 1, "synced once Full");

@@ -105,7 +105,7 @@ dependencies = [
 [[package]]
 name = "openidea-plugin"
 version = "0.1.0"
-source = "git+https://github.com/davidhsv/openidea?branch=plugin-test-runners#1d8796947896922e8b128108bbaf8fe834413245"
+source = "git+https://github.com/davidhsv/blazingly-fast-ide?branch=main#ff07083b357635e2ace889045becd329770b0127"
 dependencies = [
  "serde",
  "serde_json",

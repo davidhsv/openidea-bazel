@@ -1,6 +1,6 @@
 # Bazel for OpenIDEA
 
-An [OpenIDEA](https://github.com/l0ng-ai/openidea) plugin that opens Java Bazel workspaces from their BUILD files instead of Maven. It is a port of the Java *aspect sync* of the official Bazel plugin for IntelliJ ([bazelbuild/intellij](https://github.com/bazelbuild/intellij), branch `ijwb`) to OpenIDEA's WebAssembly plugin API (1.4). It needs OpenIDEA built from [davidhsv/openidea `plugin-test-runners`](https://github.com/davidhsv/openidea/tree/plugin-test-runners) (upstream `main` plus debuggable plugin run configurations and gutter menus) until those reach a release.
+An [OpenIDEA](https://github.com/l0ng-ai/openidea) plugin that opens Java Bazel workspaces from their BUILD files instead of Maven. It is a port of the Java *aspect sync* of the official Bazel plugin for IntelliJ ([bazelbuild/intellij](https://github.com/bazelbuild/intellij), branch `ijwb`) to OpenIDEA's WebAssembly plugin API (1.4). It needs [Blazingly Fast IDE](https://github.com/davidhsv/blazingly-fast-ide), a fork of OpenIDEA that adds debuggable plugin run configurations, gutter menus and the Blaze/Deep modes. In Blaze mode the plugin runs no Bazel by itself and stops the workspaces' Bazel servers; switching to Deep mode syncs a workspace that was never synced.
 
 ## How it works
 
