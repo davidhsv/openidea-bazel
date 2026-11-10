@@ -66,6 +66,8 @@ impl Plugin for BazelPlugin {
             // A checkout rewrites many BUILD files at once; the file events of such a batch can
             // miss, the repository change does not.
             host::subscribe(EventKind::VcsChanged)?;
+            // The IDE's Light/Full mode (`ide.mode`).
+            host::subscribe(EventKind::SettingsChanged)?;
         }
         // Projects already open when the plugin starts; the ones a window opens later come in
         // through its first event (see `handle_events`). A synced one is only remembered here: the
@@ -118,10 +120,20 @@ impl Plugin for BazelPlugin {
         // (no editor yet) is reported before plugins load, so the first one that arrives is
         // usually from opening a file.
         let project = ctx.project();
+        if events.iter().any(mode_changed) {
+            self.mode_changed();
+        }
         if let Some(project) = &project {
             self.on_project_open(project);
         }
-        let ours = |p: &String| p.contains("/.openidea/") || p.contains("/bazel-");
+        let root = project.as_ref().and_then(|p| p.root().ok());
+        let ours = |p: &String| {
+            let rel = root
+                .as_deref()
+                .and_then(|r| p.strip_prefix(&format!("{}/", r.trim_end_matches('/'))))
+                .unwrap_or(p);
+            rel.starts_with(".openidea/") || rel.starts_with("bazel-")
+        };
         // Events wait while a sync runs, so a batch can arrive after the sync that already read
         // those files: only an edit newer than the last sync counts.
         let synced = project.as_ref().and_then(|p| modified(p, SYNC_LOG));
@@ -150,7 +162,8 @@ impl BazelPlugin {
     /// already on disk (the Eclipse project).
     fn on_project_open(&mut self, project: &Project) {
         let Ok(root) = project.root() else { return };
-        if !self.opened.insert(root) || !is_bazel_workspace(project) {
+        // Light mode runs no Bazel by itself: the workspace is looked at again in Full mode.
+        if light_mode() || !self.opened.insert(root) || !is_bazel_workspace(project) {
             return;
         }
         if has_project_data(project) {
@@ -250,6 +263,27 @@ impl BazelPlugin {
             }
         }
         false
+    }
+
+    /// Light mode: the Bazel servers the workspaces keep running (one JVM each) stop. Full mode:
+    /// the open workspaces are set up as when they opened.
+    fn mode_changed(&mut self) {
+        let projects = host::projects().unwrap_or_default();
+        if !light_mode() {
+            for project in &projects {
+                self.on_project_open(project);
+            }
+            return;
+        }
+        let Some(bazel) = self.bazel.clone() else {
+            return;
+        };
+        for project in projects.iter().filter(|p| is_bazel_workspace(p)) {
+            let shutdown = host::Command::new(&bazel).args(["shutdown"]);
+            if let Err(e) = host::run_command(&shutdown, Some(project), None) {
+                host::log(LogLevel::Info, &format!("bazel shutdown: {e}"));
+            }
+        }
     }
 
     fn mark_changed(&mut self, project: &Project) {
@@ -658,6 +692,16 @@ fn parse_gutter_argument(arg: &str) -> Option<(bool, usize, &str)> {
     Some((debug, line, parts.next().filter(|p| !p.is_empty())?))
 }
 
+/// Whether the IDE is in Light mode (`ide.mode`; hosts without modes are Full).
+fn light_mode() -> bool {
+    host::setting("ide.mode").as_deref() == Some("\"light\"")
+}
+
+/// A settings change that includes the IDE's mode.
+fn mode_changed(event: &Event) -> bool {
+    matches!(event, Event::Other { kind, data } if kind == "settings-changed" && data.contains("ide.mode"))
+}
+
 /// `--run_under=env NAME=value…`: Bazel 7 has no `--run_env`, and the binary inherits only the
 /// Bazel client's environment. `None` without entries; an entry without `=` is an error.
 fn run_under_env(env: &[String]) -> Result<Option<String>, String> {
@@ -900,6 +944,77 @@ mod tests {
             "Bazel: Sync Project with BUILD Files"
         );
         assert!(read(&host, SYNC_LOG).is_some());
+    }
+
+    fn mode_event() -> [Event; 1] {
+        [Event::Other {
+            kind: "settings-changed".into(),
+            data: r#"["ide.mode"]"#.into(),
+        }]
+    }
+
+    #[test]
+    fn light_mode_waits_for_full_mode_to_sync_a_new_workspace() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.set_setting("ide.mode", r#""light""#);
+        host.add_file("MODULE.bazel", "");
+        let mut plugin = activated(ALL);
+        plugin.handle_events(&[Event::EditorFocused(None)], &host.invocation());
+        assert!(host.tasks().is_empty(), "no Bazel in light mode");
+        host.set_setting("ide.mode", r#""full""#);
+        plugin.handle_events(&mode_event(), &host.invocation());
+        assert_eq!(host.tasks().len(), 1, "synced once Full");
+    }
+
+    #[test]
+    fn switching_to_light_mode_stops_the_bazel_servers() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file("MODULE.bazel", "");
+        host.add_file(
+            ".project",
+            "<projectDescription><comment>Generated from Bazel by openidea-bazel</comment></projectDescription>",
+        );
+        host.on_process("bazelisk", |_, _| Ok(Default::default()));
+        let mut plugin = activated(ALL);
+        host.set_setting("ide.mode", r#""light""#);
+        plugin.handle_events(&mode_event(), &host.invocation());
+        let runs = host.process_runs();
+        assert!(
+            runs.iter()
+                .any(|r| r.program == "bazelisk" && r.args == ["shutdown"]),
+            "{runs:?}"
+        );
+    }
+
+    #[test]
+    fn a_workspace_named_bazel_x_still_sees_its_build_file_edits() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.set_project_root(Some("/code/bazel-x"));
+        let mut plugin = activated(ALL);
+        let changed = |path: &str| {
+            [Event::FilesChanged(FilesChanged {
+                created: vec![],
+                modified: vec![path.into()],
+                removed: vec![],
+            })]
+        };
+        plugin.handle_events(
+            &changed("/code/bazel-x/bazel-bin/x/BUILD"),
+            &host.invocation(),
+        );
+        assert!(
+            !host.status_items().contains_key(STATUS),
+            "Bazel's own output"
+        );
+        plugin.handle_events(
+            &changed("/code/bazel-x/app/BUILD.bazel"),
+            &host.invocation(),
+        );
+        assert!(
+            host.status_items()[STATUS]
+                .text
+                .contains("BUILD files changed")
+        );
     }
 
     #[test]
