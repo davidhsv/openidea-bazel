@@ -273,8 +273,10 @@ impl BazelPlugin {
             for project in &projects {
                 self.on_project_open(project);
             }
+            self.show_changed();
             return;
         }
+        host::remove_status_item(STATUS);
         let Some(bazel) = self.bazel.clone() else {
             return;
         };
@@ -286,10 +288,14 @@ impl BazelPlugin {
         }
     }
 
+    /// Remembers a workspace whose BUILD files changed; Deep mode offers to sync it, Blaze mode
+    /// keeps quiet until Deep.
     fn mark_changed(&mut self, project: &Project) {
         if let Ok(root) = project.root() {
             self.changed.insert(root);
-            self.show_changed();
+            if !light_mode() {
+                self.show_changed();
+            }
         }
     }
 
@@ -426,9 +432,14 @@ impl BazelPlugin {
         };
         let result = sync::sync(&mut ide);
         drop(task);
-        let changed_elsewhere = self.show_changed();
+        // Blaze mode shows the item only while a sync it was asked for runs.
+        let blaze = light_mode();
+        let changed_elsewhere = !blaze && self.show_changed();
+        if blaze {
+            host::remove_status_item(STATUS);
+        }
         let set_status = |text: &str, tooltip: &str| {
-            if !changed_elsewhere {
+            if !blaze && !changed_elsewhere {
                 set_status(text, tooltip);
             }
         };
@@ -964,6 +975,56 @@ mod tests {
         host.set_setting("ide.mode", r#""full""#);
         plugin.handle_events(&mode_event(), &host.invocation());
         assert_eq!(host.tasks().len(), 1, "synced once Full");
+    }
+
+    #[test]
+    fn blaze_mode_shows_no_bazel_status() {
+        let host = MockHost::install().with_capabilities(ALL);
+        host.add_file("MODULE.bazel", "");
+        host.add_file(
+            ".project",
+            "<projectDescription><comment>Generated from Bazel by openidea-bazel</comment></projectDescription>",
+        );
+        host.add_file("app/BUILD.bazel", "");
+        host.on_process("bazelisk", |_, _| Ok(Default::default()));
+        let mut plugin = activated(ALL);
+        let edit = [Event::FilesChanged(FilesChanged {
+            created: vec![],
+            modified: vec!["/project/app/BUILD.bazel".into()],
+            removed: vec![],
+        })];
+        plugin.handle_events(&edit, &host.invocation());
+        assert!(
+            host.status_items().contains_key(STATUS),
+            "Deep mode offers the sync"
+        );
+
+        host.set_setting("ide.mode", r#""light""#);
+        plugin.handle_events(&mode_event(), &host.invocation());
+        assert!(
+            !host.status_items().contains_key(STATUS),
+            "hidden in Blaze mode"
+        );
+        plugin.handle_events(&edit, &host.invocation());
+        assert!(
+            !host.status_items().contains_key(STATUS),
+            "a BUILD edit doesn't offer a sync"
+        );
+
+        host.set_setting("ide.mode", r#""full""#);
+        plugin.handle_events(&mode_event(), &host.invocation());
+        assert!(
+            host.status_items()[STATUS].text.contains("changed"),
+            "Deep mode offers it again"
+        );
+
+        host.set_setting("ide.mode", r#""light""#);
+        plugin.handle_events(&mode_event(), &host.invocation());
+        let _ = plugin.run_command("sync", &host.invocation(), None);
+        assert!(
+            !host.status_items().contains_key(STATUS),
+            "nor does a sync asked for, once done"
+        );
     }
 
     #[test]
