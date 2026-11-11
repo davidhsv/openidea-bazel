@@ -483,8 +483,12 @@ fn notify_done(s: &SyncSummary) {
         "{} source roots and {} libraries from {} targets.",
         s.source_roots, s.libraries, s.targets
     );
-    if !s.warnings.is_empty() {
-        body.push_str(&format!(" {} warnings.", s.warnings.len()));
+    match s.warnings.as_slice() {
+        [] => {}
+        [only] => body.push_str(&format!(" Warning: {only}.")),
+        [first, rest @ ..] => {
+            body.push_str(&format!(" Warning: {first} (and {} more).", rest.len()))
+        }
     }
     let actions = [NotificationAction::new("Show Log", "open-sync-log")];
     let level = if s.warnings.is_empty() {
@@ -1218,6 +1222,40 @@ mod tests {
         assert_eq!(host.tasks().len(), 1);
         assert!(plugin.changed.is_empty());
         assert!(!host.status_items()[STATUS].text.contains("changed"));
+    }
+
+    #[test]
+    fn a_sync_with_warnings_says_which() {
+        let host = MockHost::install();
+        let summary = |warnings: &[&str]| SyncSummary {
+            targets: 3,
+            source_roots: 2,
+            libraries: 1,
+            warnings: warnings.iter().map(|w| w.to_string()).collect(),
+            ..Default::default()
+        };
+        notify_done(&summary(&[]));
+        notify_done(&summary(&["the build had errors"]));
+        notify_done(&summary(&["the build had errors", "x", "y"]));
+        let sent = host.notifications_with_actions();
+        assert_eq!(sent[0].notification.level, NotificationLevel::Info);
+        assert_eq!(
+            sent[0].notification.body,
+            "2 source roots and 1 libraries from 3 targets."
+        );
+        assert_eq!(sent[1].notification.level, NotificationLevel::Warning);
+        assert!(
+            sent[1]
+                .notification
+                .body
+                .ends_with("Warning: the build had errors.")
+        );
+        assert!(
+            sent[2]
+                .notification
+                .body
+                .ends_with("Warning: the build had errors (and 2 more).")
+        );
     }
 
     #[test]
